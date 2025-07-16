@@ -86,6 +86,7 @@ function App() {
   const fadeMapRef = useRef(new Map()); // key: 'x,y', value: fade (0-1)
   const minimapRef = useRef(null);
   const [brushSize, setBrushSize] = useState(1);
+  const [mousePos, setMousePos] = useState(null); // {i, j} or null
 
   // Keep refs in sync
   useEffect(() => { liveCellsRef.current = liveCells; }, [liveCells]);
@@ -236,12 +237,15 @@ function App() {
     const gridY = viewport.y + Math.floor(mouseX / cellSize) - Math.floor(VIEW_COLS / 2);
     paintBrush(gridX, gridY, mode);
   };
-  // Paint a square brush of the selected size
+  // Paint a circular brush of the selected size (in pixels)
   const paintBrush = (centerX, centerY, mode) => {
-    const half = Math.floor(brushSize / 2);
-    for (let dx = -half; dx <= half; dx++) {
-      for (let dy = -half; dy <= half; dy++) {
-        paintCell(centerX + dx, centerY + dy, mode);
+    const cellSize = cellSizeRef.current;
+    const radius = brushSize / 2 / cellSize;
+    for (let dx = Math.floor(-radius); dx <= Math.ceil(radius); dx++) {
+      for (let dy = Math.floor(-radius); dy <= Math.ceil(radius); dy++) {
+        if (dx * dx + dy * dy <= radius * radius) {
+          paintCell(centerX + dx, centerY + dy, mode);
+        }
       }
     }
   };
@@ -268,6 +272,24 @@ function App() {
       });
       return newCells;
     });
+  };
+
+  // Mouse move for brush preview
+  const handleGridMouseMove = (e) => {
+    const rect = canvasRef.current.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    const cellSize = cellSizeRef.current;
+    const i = Math.floor(mouseY / cellSize);
+    const j = Math.floor(mouseX / cellSize);
+    setMousePos({ i, j });
+    if (paintingRef.current) {
+      paintCellFromEvent(e, paintModeRef.current);
+    }
+  };
+  const handleGridMouseLeave = () => {
+    setMousePos(null);
+    paintingRef.current = false;
   };
 
   // Zoom with mouse wheel/trackpad
@@ -329,6 +351,22 @@ function App() {
           }
         }
       }
+      // Draw brush preview
+      if (mousePos && brushSize > 1) {
+        ctx.save();
+        ctx.globalAlpha = 0.25;
+        ctx.beginPath();
+        ctx.arc(
+          (mousePos.j + 0.5) * cellSize,
+          (mousePos.i + 0.5) * cellSize,
+          brushSize / 2,
+          0,
+          2 * Math.PI
+        );
+        ctx.fillStyle = '#0077ff';
+        ctx.fill();
+        ctx.restore();
+      }
       // Draw grid lines
       ctx.strokeStyle = '#444';
       ctx.lineWidth = 1;
@@ -353,7 +391,7 @@ function App() {
     };
     draw();
     return () => cancelAnimationFrame(animationFrameId);
-  }, []);
+  }, [brushSize, mousePos]);
 
   // Export pattern as JSON
   const handleExport = () => {
@@ -552,16 +590,16 @@ function App() {
     return { cells: normCells, width, height };
   }
 
+  // UI: original Vite/React style
   return (
-    <div style={{ height: '100vh', width: '100vw', overflow: 'hidden', margin: 0, padding: 0, position: 'relative' }}>
-      {/* Floating Controls Overlay */}
-      <div className="controls-overlay" style={{ position: 'absolute', top: 16, left: 16, zIndex: 10 }}>
-        <button onClick={handleStart} disabled={running} style={{ marginBottom: 2 }}>Start</button>
-        <button onClick={handleStop} disabled={!running} style={{ marginBottom: 2 }}>Stop</button>
-        <button onClick={handleStep} disabled={running} style={{ marginBottom: 2 }}>Step</button>
-        <button onClick={handleClear} style={{ marginBottom: 8 }}>Clear</button>
-        <button onClick={handleExport} style={{ marginBottom: 2 }}>Export</button>
-        <button onClick={handleImportClick} style={{ marginBottom: 8 }}>Import</button>
+    <div className="game-container">
+      <div className="controls">
+        <button onClick={handleStart} disabled={running}>Start</button>
+        <button onClick={handleStop} disabled={!running}>Stop</button>
+        <button onClick={handleStep} disabled={running}>Step</button>
+        <button onClick={handleClear}>Clear</button>
+        <button onClick={handleExport}>Export</button>
+        <button onClick={handleImportClick}>Import</button>
         <input
           type="file"
           accept=".rle,.lif,.lif.txt"
@@ -569,7 +607,7 @@ function App() {
           style={{ display: 'none' }}
           onChange={handleFileChange}
         />
-        <label style={{ fontSize: 13, marginBottom: 2 }}>
+        <label style={{ marginLeft: 16 }}>
           Speed:
           <input
             type="range"
@@ -578,60 +616,43 @@ function App() {
             step={1}
             value={speed}
             onChange={e => setSpeed(Number(e.target.value))}
-            style={{ width: '100%' }}
+            style={{ verticalAlign: 'middle' }}
           />
-          <span style={{ fontSize: 12 }}>{speed}ms</span>
+          {speed}ms
         </label>
-        <label style={{ fontSize: 13, marginBottom: 2 }}>
+        <label style={{ marginLeft: 16 }}>
           Zoom:
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <button onClick={() => setCellSize(s => Math.max(MIN_CELL_SIZE, s - 2))} disabled={cellSize <= MIN_CELL_SIZE}>-</button>
-            <span style={{ margin: '0 8px', fontSize: 12 }}>{cellSize}px</span>
-            <button onClick={() => setCellSize(s => Math.min(MAX_CELL_SIZE, s + 2))} disabled={cellSize >= MAX_CELL_SIZE}>+</button>
-          </div>
+          <button onClick={() => setCellSize(s => Math.max(MIN_CELL_SIZE, s - 2))} disabled={cellSize <= MIN_CELL_SIZE}>-</button>
+          <span style={{ margin: '0 8px' }}>{cellSize}px</span>
+          <button onClick={() => setCellSize(s => Math.min(MAX_CELL_SIZE, s + 2))} disabled={cellSize >= MAX_CELL_SIZE}>+</button>
         </label>
-        <label style={{ fontSize: 13, marginBottom: 2 }}>
-          Brush Size:
-          <select value={brushSize} onChange={e => setBrushSize(Number(e.target.value))} style={{ marginLeft: 8, fontSize: 14, borderRadius: 6, padding: '2px 8px' }}>
-            <option value={1}>1x1</option>
-            <option value={3}>3x3</option>
-            <option value={5}>5x5</option>
-            <option value={7}>7x7</option>
-          </select>
+        <label style={{ marginLeft: 16 }}>
+          Brush:
+          <input
+            type="range"
+            min={1}
+            max={30}
+            step={1}
+            value={brushSize}
+            onChange={e => setBrushSize(Number(e.target.value))}
+            style={{ verticalAlign: 'middle', width: 80 }}
+          />
+          {brushSize}px
         </label>
-        <div className="cell-age-legend" style={{ fontSize: 12, color: '#bbb', marginTop: 4, lineHeight: 1.5 }}>
-          <b>Controls:</b><br />
-          Pan: Right mouse drag or arrow keys<br />
-          Paint: Left drag<br />
-          Erase: Alt+drag<br />
-          Zoom: Mouse wheel/trackpad or +/- buttons<br />
-          Speed: slider<br />
-          <span style={{ color: '#fff', fontWeight: 'bold' }}>Cell Age:</span><br />
-          <span style={{ color: '#fff' }}>White</span> (new), <span style={{ color: 'red' }}>Red</span> (10+), <span style={{ color: 'yellow' }}>Yellow</span> (20+), <span style={{ color: 'lime' }}>Green</span> (40+)
-          <div className="footer" style={{ marginTop: 10, color: '#0ff', fontWeight: 'bold', fontSize: 13 }}>
-            Experimental Cursor Trials - Fabio Bauer 2025
-          </div>
-        </div>
       </div>
-      {/* Game Field */}
-      <canvas
-        ref={canvasRef}
-        width={VIEW_COLS * cellSize}
-        height={VIEW_ROWS * cellSize}
-        style={{ display: 'block', background: '#000', boxShadow: '0 0 8px #0002', border: '2px solid #333', position: 'absolute', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 1 }}
-        onMouseDown={handleCanvasMouseDown}
-        onMouseMove={handleCanvasMouseMove}
-        onMouseUp={handleCanvasMouseUp}
-        onMouseLeave={handleCanvasMouseUp}
-        onContextMenu={handleContextMenu}
-      />
-      {/* Minimap */}
-      <canvas
-        ref={minimapRef}
-        width={180}
-        height={180}
-        className="minimap"
-      />
+      <div className="grid">
+        <canvas
+          ref={canvasRef}
+          width={VIEW_COLS * cellSize}
+          height={VIEW_ROWS * cellSize}
+          style={{ display: 'block', background: '#000', border: '2px solid #333' }}
+          onMouseDown={handleCanvasMouseDown}
+          onMouseMove={handleGridMouseMove}
+          onMouseUp={handleCanvasMouseUp}
+          onMouseLeave={handleGridMouseLeave}
+          onContextMenu={handleContextMenu}
+        />
+      </div>
     </div>
   );
 }
