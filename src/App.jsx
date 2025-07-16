@@ -1,68 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
 import React from 'react';
 import './App.css';
-
-const INIT_CELL_SIZE = 20;
-const MIN_CELL_SIZE = 8;
-const MAX_CELL_SIZE = 40;
-const MIN_SPEED = 5;
-const MAX_SPEED = 100;
-const INIT_SPEED = 30;
-const FADE_SPEED = 0.15; // fade step per frame
-
-function getKey(x, y) {
-  return `${x},${y}`;
-}
-function parseKey(key) {
-  const [x, y] = key.split(',').map(Number);
-  return { x, y };
-}
-
-function getNeighbors(x, y) {
-  return [
-    [x - 1, y - 1], [x - 1, y], [x - 1, y + 1],
-    [x, y - 1],                 [x, y + 1],
-    [x + 1, y - 1], [x + 1, y], [x + 1, y + 1],
-  ];
-}
-
-function nextGeneration(liveCells, ageMap) {
-  const neighborCounts = new Map();
-  for (const key of liveCells) {
-    const { x, y } = parseKey(key);
-    for (const [nx, ny] of getNeighbors(x, y)) {
-      const nKey = getKey(nx, ny);
-      neighborCounts.set(nKey, (neighborCounts.get(nKey) || 0) + 1);
-    }
-  }
-  const newLiveCells = new Set();
-  const newAgeMap = new Map();
-  for (const [key, count] of neighborCounts.entries()) {
-    if (count === 3 || (count === 2 && liveCells.has(key))) {
-      newLiveCells.add(key);
-      // If cell was alive, increment age; if new, set to 0
-      newAgeMap.set(key, liveCells.has(key) ? (ageMap.get(key) || 0) + 1 : 0);
-    }
-  }
-  return { newLiveCells, newAgeMap };
-}
-
-function getCellColor(age, fade) {
-  // White (0-9), Red (10-19), Yellow (20-39), Green (40+)
-  if (age >= 40) {
-    // Green
-    return `rgba(0,255,0,${fade})`;
-  } else if (age >= 20) {
-    // Yellow
-    return `rgba(255,255,0,${fade})`;
-  } else if (age >= 10) {
-    // Red
-    return `rgba(255,0,0,${fade})`;
-  } else {
-    // White
-    return `rgba(255,255,255,${fade})`;
-  }
-}
+import Sidebar from './components/Sidebar';
+import GameCanvas from './components/GameCanvas';
+import Footer from './components/Footer';
+import {
+  INIT_CELL_SIZE, MIN_CELL_SIZE, MAX_CELL_SIZE,
+  MIN_SPEED, MAX_SPEED, INIT_SPEED, FADE_SPEED,
+  getKey, parseKey, getNeighbors, nextGeneration, getCellColor, parseRLE, parseLIF
+} from './utils';
 
 function App() {
   const [liveCells, setLiveCells] = useState(new Set());
