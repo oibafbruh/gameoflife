@@ -190,13 +190,16 @@ function App() {
   const paintBrush = (centerX, centerY, mode) => {
     const cellSize = cellSizeRef.current;
     const radiusPx = brushSize / 2;
-    const radiusCells = radiusPx / cellSize;
-    for (let dx = Math.floor(-radiusCells); dx <= Math.ceil(radiusCells); dx++) {
-      for (let dy = Math.floor(-radiusCells); dy <= Math.ceil(radiusCells); dy++) {
-        // Center brush on fractional cell
-        const dist = Math.sqrt((dx + 0.5) ** 2 + (dy + 0.5) ** 2);
-        if (dist * cellSize <= radiusPx) {
-          paintCell(Math.round(centerX + dx), Math.round(centerY + dy), mode);
+    const centerCellX = Math.floor(centerX);
+    const centerCellY = Math.floor(centerY);
+    const cellsRadius = Math.ceil(radiusPx / cellSize);
+    for (let dx = -cellsRadius; dx <= cellsRadius; dx++) {
+      for (let dy = -cellsRadius; dy <= cellsRadius; dy++) {
+        // Center of this cell in pixel space relative to brush center
+        const px = (centerCellX + dx - centerX) * cellSize;
+        const py = (centerCellY + dy - centerY) * cellSize;
+        if (Math.sqrt(px * px + py * py) <= radiusPx) {
+          paintCell(centerCellX + dx, centerCellY + dy, mode);
         }
       }
     }
@@ -612,6 +615,23 @@ function App() {
           handleContextMenu={handleContextMenu}
         />
       </div>
+      {/* Minimap overlay */}
+      <canvas
+        ref={minimapRef}
+        width={160}
+        height={160}
+        style={{
+          position: 'fixed',
+          right: 24,
+          bottom: 24,
+          width: 160,
+          height: 160,
+          background: '#181c',
+          border: '2px solid #0ff6',
+          borderRadius: 12,
+          zIndex: 120
+        }}
+      />
       <div style={{ position: 'fixed', left: 10, bottom: 10, color: '#888', fontSize: 15, fontWeight: 500, zIndex: 100 }}>
         Experimental Project - Fabio Bauer
       </div>
