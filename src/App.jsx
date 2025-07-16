@@ -750,6 +750,26 @@ function App() {
     if (window.innerWidth < 700) setShowGridLines(false);
   }, []);
 
+  // Track live cell count history for graph
+  const [pixelHistory, setPixelHistory] = useState([]);
+  useEffect(() => {
+    setPixelHistory(hist => {
+      const next = [...hist, liveCells.size];
+      return next.length > 100 ? next.slice(next.length - 100) : next;
+    });
+  }, [liveCells]);
+
+  // Track max pixels ever and rate of change
+  const [maxPixels, setMaxPixels] = useState(0);
+  const [lastPixelCount, setLastPixelCount] = useState(0);
+  const [pixelDelta, setPixelDelta] = useState(0);
+  useEffect(() => {
+    setMaxPixels(mp => Math.max(mp, liveCells.size));
+    setPixelDelta(liveCells.size - lastPixelCount);
+    setLastPixelCount(liveCells.size);
+  }, [liveCells]);
+  const percentToMax = maxPixels > 0 ? ((liveCells.size - maxPixels) / maxPixels) * 100 : 0;
+
   // UI: floating sidebar overlay pinned to top left
   return (
     <div style={{ height: '100vh', width: '100vw', position: 'relative', background: '#111' }}>
@@ -897,6 +917,64 @@ function App() {
         }}>
           Game Speed: {speed}ms<br/>
           <span style={{ color: fps < 10 ? '#ff4444' : fps < 28 ? '#ffe066' : fps >= 40 ? '#00ff66' : '#fff' }}>Performance: {fps} FPS</span>
+          <div style={{ color: '#0ff', fontSize: 15, marginTop: 6 }}>Max Pixels: {maxPixels}</div>
+          <div style={{ fontSize: 14, marginTop: 2 }}>
+            Change to Max: <span style={{ color: percentToMax < 0 ? '#ff4444' : percentToMax > 0 ? '#00ff66' : '#fff' }}>{percentToMax > 0 ? '+' : ''}{percentToMax.toFixed(1)}%</span>
+          </div>
+          <div style={{ fontSize: 14, marginTop: 2 }}>
+            Δ: <span style={{ color: pixelDelta < 0 ? '#ff4444' : pixelDelta > 0 ? '#00ff66' : '#aaa' }}>{pixelDelta > 0 ? '+' : ''}{pixelDelta}</span>
+          </div>
+        </div>
+        {/* Pixel count and graph in bottom right */}
+        <div style={{
+          position: 'fixed',
+          right: 18,
+          bottom: 18,
+          zIndex: 150,
+          background: 'rgba(30,34,40,0.95)',
+          borderRadius: 12,
+          boxShadow: '0 2px 12px #0008',
+          padding: '10px 18px 12px 18px',
+          minWidth: 120,
+          textAlign: 'center',
+        }}>
+          <div style={{ color: '#0ff', fontWeight: 600, fontSize: 18, marginBottom: 4 }}>
+            Pixels: {liveCells.size}
+          </div>
+          <canvas
+            width={120}
+            height={48}
+            style={{ width: 120, height: 48, background: '#000', borderRadius: 8 }}
+            ref={el => {
+              if (!el) return;
+              const ctx = el.getContext('2d');
+              ctx.clearRect(0, 0, 120, 48);
+              // Black background
+              ctx.fillStyle = '#000';
+              ctx.fillRect(0, 0, 120, 48);
+              ctx.strokeStyle = '#0ff';
+              ctx.lineWidth = 2.5;
+              ctx.beginPath();
+              const hist = pixelHistory;
+              if (hist.length > 0) {
+                const max = Math.max(...hist, 1);
+                const min = Math.min(...hist, 0);
+                // Add margin (5% top/bottom)
+                const margin = 0.05 * (max - min || 1);
+                const graphMax = max + margin;
+                const graphMin = min - margin;
+                for (let i = 0; i < hist.length; i++) {
+                  const x = (i / (hist.length - 1)) * 119;
+                  // Avoid division by zero for flat lines
+                  const y = 46 - ((hist[i] - graphMin) / (graphMax - graphMin || 1)) * 44;
+                  if (i === 0) ctx.moveTo(x, y);
+                  else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+              }
+            }}
+          />
+          <div style={{ color: '#888', fontSize: 13, marginTop: 2 }}>Population (last 100 steps)</div>
         </div>
       </div>
       {/* Mobile hint */}
