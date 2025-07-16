@@ -928,7 +928,7 @@ function App() {
       if (showHeatmap && coolOff) {
         for (const [key, value] of heatMap.entries()) {
           if (!liveCells.has(key)) {
-            heatMap.set(key, Math.max(0, Math.round(value - 0.025)));
+            heatMap.set(key, Math.max(0, Math.round(value - 1)));
           }
         }
       }
