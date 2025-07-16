@@ -235,8 +235,9 @@ function App() {
     const VIEW_ROWS = Math.floor(dimensions.height / cellSize);
     const VIEW_COLS = Math.floor(dimensions.width / cellSize);
     const viewport = viewportRef.current;
-    const gridX = viewport.x + Math.floor(mouseY / cellSize) - Math.floor(VIEW_ROWS / 2);
-    const gridY = viewport.y + Math.floor(mouseX / cellSize) - Math.floor(VIEW_COLS / 2);
+    // Center brush on mouse, not cell
+    const gridX = viewport.x + (mouseY / cellSize) - (VIEW_ROWS / 2);
+    const gridY = viewport.y + (mouseX / cellSize) - (VIEW_COLS / 2);
     paintBrush(gridX, gridY, mode);
   };
   // Paint a circular brush of the selected size (in pixels)
@@ -246,9 +247,10 @@ function App() {
     const radiusCells = radiusPx / cellSize;
     for (let dx = Math.floor(-radiusCells); dx <= Math.ceil(radiusCells); dx++) {
       for (let dy = Math.floor(-radiusCells); dy <= Math.ceil(radiusCells); dy++) {
-        // FIX: Use cell units for brush area
-        if ((dx ** 2 + dy ** 2) <= radiusCells ** 2) {
-          paintCell(centerX + dx, centerY + dy, mode);
+        // Center brush on fractional cell
+        const dist = Math.sqrt((dx + 0.5) ** 2 + (dy + 0.5) ** 2);
+        if (dist * cellSize <= radiusPx) {
+          paintCell(Math.round(centerX + dx), Math.round(centerY + dy), mode);
         }
       }
     }
@@ -283,10 +285,7 @@ function App() {
     const rect = canvasRef.current.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
-    const cellSize = cellSizeRef.current;
-    const i = Math.floor(mouseY / cellSize);
-    const j = Math.floor(mouseX / cellSize);
-    setMousePos({ i, j });
+    setMousePos({ mouseX, mouseY });
     if (paintingRef.current) {
       paintCellFromEvent(e, paintModeRef.current);
     }
@@ -361,8 +360,8 @@ function App() {
         ctx.globalAlpha = 0.25;
         ctx.beginPath();
         ctx.arc(
-          (mousePos.j + 0.5) * cellSize,
-          (mousePos.i + 0.5) * cellSize,
+          mousePos.mouseX,
+          mousePos.mouseY,
           brushSize / 2,
           0,
           2 * Math.PI
@@ -654,10 +653,8 @@ function App() {
         </>}
       </div>
       {/* Main grid area */}
-      <div style={{ height: '100vh', width: '100vw', display: 'flex', flexDirection: 'row', alignItems: 'stretch', justifyContent: 'flex-start' }}>
-        {/* Sidebar space (invisible, for layout) */}
-        <div style={{ width: showSidebar ? 260 : 40, flexShrink: 0 }} />
-        <div className="grid" style={{ flex: 1, height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
+      <div style={{ height: '100vh', width: '100vw', marginLeft: showSidebar ? 260 : 40, transition: 'margin-left 0.2s', background: '#000' }}>
+        <div className="grid" style={{ width: '100%', height: '100%', background: '#000' }}>
           <canvas
             ref={canvasRef}
             width={VIEW_COLS * cellSize}
