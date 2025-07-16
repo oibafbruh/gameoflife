@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import React from 'react';
+import React, { memo } from 'react';
 import './App.css';
 import Sidebar from './components/Sidebar';
 import GameCanvas from './components/GameCanvas';
@@ -9,6 +9,8 @@ import {
   MIN_SPEED, MAX_SPEED, INIT_SPEED, FADE_SPEED,
   getKey, parseKey, getNeighbors, nextGeneration, getCellColor, parseRLE, parseLIF
 } from './utils';
+
+const MemoGameCanvas = memo(GameCanvas);
 
 function App() {
   const [liveCells, setLiveCells] = useState(new Set());
@@ -35,6 +37,10 @@ function App() {
   const [mousePos, setMousePos] = useState(null); // {i, j} or null
   const [showSidebar, setShowSidebar] = useState(true);
   const [showGridLines, setShowGridLines] = useState(true);
+  // FPS tracking
+  const [fps, setFps] = useState(60);
+  const lastFrameTime = useRef(performance.now());
+  const frameCount = useRef(0);
 
   // Keep refs in sync
   useEffect(() => { liveCellsRef.current = liveCells; }, [liveCells]);
@@ -121,6 +127,18 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Space bar toggles start/stop
+  useEffect(() => {
+    const handleSpace = (e) => {
+      if (e.code === 'Space' && !e.repeat && document.activeElement.tagName !== 'INPUT') {
+        setRunning(r => !r);
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('keydown', handleSpace);
+    return () => window.removeEventListener('keydown', handleSpace);
+  }, []);
+
   // Mouse events for painting and panning (always enabled)
   const handleCanvasMouseDown = (e) => {
     if (e.button === 2) {
@@ -171,8 +189,13 @@ function App() {
     window.removeEventListener('mouseup', handleMouseUpPan);
   };
 
-  // Paint cell alive or dead from mouse event (with brush)
+  // Throttle painting for performance
+  const lastPaintTime = useRef(0);
+  const PAINT_THROTTLE = 8; // ms
   const paintCellFromEvent = (e, mode) => {
+    const now = performance.now();
+    if (now - lastPaintTime.current < PAINT_THROTTLE) return;
+    lastPaintTime.current = now;
     const rect = canvasRef.current.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
@@ -307,7 +330,7 @@ function App() {
           }
         }
       }
-      // Draw brush preview
+      // Draw brush preview (filled)
       if (mousePos && brushSize > 1) {
         ctx.save();
         ctx.globalAlpha = 0.25;
@@ -315,12 +338,29 @@ function App() {
         ctx.arc(
           mousePos.mouseX,
           mousePos.mouseY,
-          brushSize / 2,
+          (brushSize / 2) * cellSize / (cellSize), // for grid cell units, but since mousePos is in px, just use brushSize/2 * cellSize
           0,
           2 * Math.PI
         );
         ctx.fillStyle = '#0077ff';
         ctx.fill();
+        ctx.restore();
+      }
+      // Draw brush preview (outline)
+      if (mousePos && brushSize > 0) {
+        ctx.save();
+        ctx.globalAlpha = 0.8;
+        ctx.beginPath();
+        ctx.arc(
+          mousePos.mouseX,
+          mousePos.mouseY,
+          (brushSize / 2) * cellSize,
+          0,
+          2 * Math.PI
+        );
+        ctx.strokeStyle = '#00aaff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
         ctx.restore();
       }
       // Draw grid lines (if enabled)
@@ -350,6 +390,23 @@ function App() {
     draw();
     return () => cancelAnimationFrame(animationFrameId);
   }, [brushSize, mousePos, showGridLines]);
+
+  // FPS tracking
+  useEffect(() => {
+    let animationFrameId;
+    let lastFpsUpdate = performance.now();
+    const updateFps = (now) => {
+      frameCount.current++;
+      if (now - lastFpsUpdate > 500) {
+        setFps(Math.round((frameCount.current * 1000) / (now - lastFpsUpdate)));
+        frameCount.current = 0;
+        lastFpsUpdate = now;
+      }
+      animationFrameId = requestAnimationFrame(updateFps);
+    };
+    animationFrameId = requestAnimationFrame(updateFps);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, []);
 
   // Export pattern as JSON
   const handleExport = () => {
@@ -556,6 +613,55 @@ function App() {
     return { cells: normCells, width, height };
   }
 
+  // Touch support for painting and panning
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    let lastTouch = null;
+    let isPanning = false;
+    let panStart = null;
+    const handleTouchStart = (e) => {
+      if (e.touches.length === 1) {
+        // Single finger: paint
+        paintingRef.current = true;
+        paintModeRef.current = 'alive';
+        lastTouch = e.touches[0];
+        paintCellFromEvent(e.touches[0], 'alive');
+      } else if (e.touches.length === 2) {
+        // Two fingers: pan
+        isPanning = true;
+        panStart = [e.touches[0].clientX, e.touches[0].clientY, viewportRef.current.x, viewportRef.current.y];
+      }
+    };
+    const handleTouchMove = (e) => {
+      if (isPanning && e.touches.length === 2) {
+        const dx = Math.round((e.touches[0].clientY - panStart[1]) / cellSizeRef.current);
+        const dy = Math.round((e.touches[0].clientX - panStart[0]) / cellSizeRef.current);
+        setViewport({ x: panStart[2] - dx, y: panStart[3] - dy });
+      } else if (paintingRef.current && e.touches.length === 1) {
+        paintCellFromEvent(e.touches[0], paintModeRef.current);
+      }
+    };
+    const handleTouchEnd = (e) => {
+      paintingRef.current = false;
+      isPanning = false;
+      panStart = null;
+    };
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+    return () => {
+      canvas.removeEventListener('touchstart', handleTouchStart);
+      canvas.removeEventListener('touchmove', handleTouchMove);
+      canvas.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [cellSize]);
+
+  // Hide grid lines by default on mobile
+  useEffect(() => {
+    if (window.innerWidth < 700) setShowGridLines(false);
+  }, []);
+
   // UI: floating sidebar overlay pinned to top left
   return (
     <div style={{ height: '100vh', width: '100vw', position: 'relative', background: '#111' }}>
@@ -615,7 +721,7 @@ function App() {
       </div>
       {/* Main grid area */}
       <div style={{ height: '100vh', width: '100vw', marginLeft: showSidebar ? 260 : 40, transition: 'margin-left 0.2s', background: '#000' }}>
-        <GameCanvas
+        <MemoGameCanvas
           canvasRef={canvasRef}
           VIEW_COLS={VIEW_COLS}
           VIEW_ROWS={VIEW_ROWS}
@@ -626,24 +732,85 @@ function App() {
           handleGridMouseLeave={handleGridMouseLeave}
           handleContextMenu={handleContextMenu}
         />
-      </div>
-      {/* Minimap overlay */}
-      <canvas
-        ref={minimapRef}
-        width={280}
-        height={280}
-        style={{
+        {/* Video-style speed controller */}
+        <div className="video-controller" style={{
+          position: 'fixed',
+          left: '50%',
+          bottom: 32,
+          transform: 'translateX(-50%)',
+          background: 'rgba(30,34,40,0.95)',
+          borderRadius: 16,
+          boxShadow: '0 2px 16px #0008',
+          padding: '10px 24px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 24,
+          zIndex: 200,
+          minWidth: 180,
+          height: 64,
+        }}>
+          <button
+            onClick={() => setSpeed(s => Math.max(MIN_SPEED, s - 10))}
+            style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'none', color: '#fff', fontSize: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            title="Faster (subtract 10ms)"
+            disabled={speed <= MIN_SPEED}
+          >
+            &#x2039;
+          </button>
+          <button
+            onClick={() => setRunning(r => !r)}
+            style={{ width: 48, height: 48, borderRadius: '50%', border: 'none', background: 'none', color: '#fff', fontSize: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            title={running ? 'Pause (Space)' : 'Play (Space)'}
+          >
+            {running ? '❚❚' : '▶'}
+          </button>
+          <button
+            onClick={() => setSpeed(s => Math.min(MAX_SPEED, s + 10))}
+            style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'none', color: '#fff', fontSize: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            title="Slower (add 10ms)"
+            disabled={speed >= MAX_SPEED}
+          >
+            &#x203A;
+          </button>
+        </div>
+        {/* Minimap overlay */}
+        <canvas
+          ref={minimapRef}
+          width={280}
+          height={280}
+          className="minimap"
+          style={{
+            position: 'fixed',
+            right: 24,
+            top: 24,
+            width: 280,
+            height: 280,
+            background: 'transparent',
+            border: '2px solid #0ff6',
+            borderRadius: 12,
+            zIndex: 120
+          }}
+        />
+        {/* Game speed and performance stat under minimap */}
+        <div style={{
           position: 'fixed',
           right: 24,
-          top: 24,
-          width: 280,
-          height: 280,
-          background: 'transparent',
-          border: '2px solid #0ff6',
-          borderRadius: 12,
-          zIndex: 120
-        }}
-      />
+          top: 314,
+          color: '#fff',
+          fontSize: 16,
+          fontWeight: 500,
+          background: 'rgba(30,34,40,0.95)',
+          borderRadius: 8,
+          padding: '4px 16px',
+          zIndex: 121,
+          textAlign: 'center',
+          minWidth: 120
+        }}>
+          Game Speed: {speed}ms<br/>
+          <span style={{ color: fps < 10 ? '#ff4444' : fps < 28 ? '#ffe066' : fps >= 40 ? '#00ff66' : '#fff' }}>Performance: {fps} FPS</span>
+        </div>
+      </div>
       <div style={{ position: 'fixed', left: 10, bottom: 10, color: '#888', fontSize: 15, fontWeight: 500, zIndex: 100 }}>
         Experimental Project - Fabio Bauer
       </div>

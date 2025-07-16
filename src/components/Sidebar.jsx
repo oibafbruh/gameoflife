@@ -13,8 +13,14 @@ function Sidebar({
     <div style={{ position: 'fixed', top: 18, left: 18, zIndex: 100, width: showSidebar ? 260 : 40, background: '#232b3a', color: '#fff', borderRadius: 14, boxShadow: '0 4px 24px #0008', border: '1.5px solid #0ff6', transition: 'width 0.2s', overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: showSidebar ? 'flex-start' : 'center', padding: showSidebar ? '18px 12px 12px 12px' : '18px 0 0 0' }}>
       <button onClick={() => setShowSidebar(s => !s)} style={{ marginBottom: 18, width: 32, height: 32, borderRadius: 8, border: 'none', background: '#333', color: '#fff', fontWeight: 700, fontSize: 18, cursor: 'pointer' }}>{showSidebar ? '⏴' : '⏵'}</button>
       {showSidebar && <>
-        <button onClick={handleStart} disabled={running} className="sidebar-btn">Start</button>
-        <button onClick={handleStop} disabled={!running} className="sidebar-btn">Stop</button>
+        <button
+          onClick={() => window.open('https://en.wikipedia.org/wiki/Conway%27s_Game_of_Life', '_blank', 'noopener,noreferrer')}
+          className="sidebar-btn"
+          style={{ marginBottom: 10, background: '#0ff', color: '#222', fontWeight: 700 }}
+          title="Rules"
+        >
+          Rules
+        </button>
         <button onClick={handleStep} disabled={running} className="sidebar-btn">Step</button>
         <button onClick={handleClear} className="sidebar-btn">Clear</button>
         <button onClick={handleExport} className="sidebar-btn">Export</button>
@@ -26,19 +32,6 @@ function Sidebar({
           style={{ display: 'none' }}
           onChange={handleFileChange}
         />
-        <label style={{ margin: '8px 0 0 0', display: 'block' }}>
-          Speed:
-          <input
-            type="range"
-            min={MIN_SPEED}
-            max={MAX_SPEED}
-            step={1}
-            value={speed}
-            onChange={e => setSpeed(Number(e.target.value))}
-            style={{ verticalAlign: 'middle', width: 120 }}
-          />
-          {speed}ms
-        </label>
         <label style={{ margin: '8px 0 0 0', display: 'block' }}>
           Zoom:
           <button onClick={() => setCellSize(s => Math.max(MIN_CELL_SIZE, s - 2))} disabled={cellSize <= MIN_CELL_SIZE} className="sidebar-btn" style={{ width: 36, padding: 0 }}>-</button>
