@@ -85,6 +85,7 @@ function App() {
   const dimensionsRef = useRef(dimensions);
   const fadeMapRef = useRef(new Map()); // key: 'x,y', value: fade (0-1)
   const minimapRef = useRef(null);
+  const [brushSize, setBrushSize] = useState(1);
 
   // Keep refs in sync
   useEffect(() => { liveCellsRef.current = liveCells; }, [liveCells]);
@@ -221,7 +222,7 @@ function App() {
     window.removeEventListener('mouseup', handleMouseUpPan);
   };
 
-  // Paint cell alive or dead from mouse event
+  // Paint cell alive or dead from mouse event (with brush)
   const paintCellFromEvent = (e, mode) => {
     const rect = canvasRef.current.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
@@ -233,7 +234,16 @@ function App() {
     const viewport = viewportRef.current;
     const gridX = viewport.x + Math.floor(mouseY / cellSize) - Math.floor(VIEW_ROWS / 2);
     const gridY = viewport.y + Math.floor(mouseX / cellSize) - Math.floor(VIEW_COLS / 2);
-    paintCell(gridX, gridY, mode);
+    paintBrush(gridX, gridY, mode);
+  };
+  // Paint a square brush of the selected size
+  const paintBrush = (centerX, centerY, mode) => {
+    const half = Math.floor(brushSize / 2);
+    for (let dx = -half; dx <= half; dx++) {
+      for (let dy = -half; dy <= half; dy++) {
+        paintCell(centerX + dx, centerY + dy, mode);
+      }
+    }
   };
   const paintCell = (x, y, mode) => {
     setLiveCells(cells => {
@@ -579,6 +589,15 @@ function App() {
             <span style={{ margin: '0 8px', fontSize: 12 }}>{cellSize}px</span>
             <button onClick={() => setCellSize(s => Math.min(MAX_CELL_SIZE, s + 2))} disabled={cellSize >= MAX_CELL_SIZE}>+</button>
           </div>
+        </label>
+        <label style={{ fontSize: 13, marginBottom: 2 }}>
+          Brush Size:
+          <select value={brushSize} onChange={e => setBrushSize(Number(e.target.value))} style={{ marginLeft: 8, fontSize: 14, borderRadius: 6, padding: '2px 8px' }}>
+            <option value={1}>1x1</option>
+            <option value={3}>3x3</option>
+            <option value={5}>5x5</option>
+            <option value={7}>7x7</option>
+          </select>
         </label>
         <div className="cell-age-legend" style={{ fontSize: 12, color: '#bbb', marginTop: 4, lineHeight: 1.5 }}>
           <b>Controls:</b><br />
