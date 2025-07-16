@@ -595,11 +595,11 @@ function App() {
     return { cells: normCells, width, height };
   }
 
-  // UI: sidebar for options, grid fills rest
+  // UI: floating sidebar overlay pinned to top left
   return (
-    <div style={{ display: 'flex', height: '100vh', width: '100vw', position: 'relative' }}>
-      {/* Sidebar */}
-      <div style={{ width: showSidebar ? 260 : 40, background: '#232b3a', color: '#fff', transition: 'width 0.2s', overflow: 'hidden', boxShadow: '2px 0 8px #0002', display: 'flex', flexDirection: 'column', alignItems: showSidebar ? 'flex-start' : 'center', padding: showSidebar ? '18px 12px 12px 12px' : '18px 0 0 0' }}>
+    <div style={{ height: '100vh', width: '100vw', position: 'relative', background: '#111' }}>
+      {/* Floating Sidebar Overlay */}
+      <div style={{ position: 'fixed', top: 18, left: 18, zIndex: 100, width: showSidebar ? 260 : 40, background: '#232b3a', color: '#fff', borderRadius: 14, boxShadow: '0 4px 24px #0008', border: '1.5px solid #0ff6', transition: 'width 0.2s', overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: showSidebar ? 'flex-start' : 'center', padding: showSidebar ? '18px 12px 12px 12px' : '18px 0 0 0' }}>
         <button onClick={() => setShowSidebar(s => !s)} style={{ marginBottom: 18, width: 32, height: 32, borderRadius: 8, border: 'none', background: '#333', color: '#fff', fontWeight: 700, fontSize: 18, cursor: 'pointer' }}>{showSidebar ? '⏴' : '⏵'}</button>
         {showSidebar && <>
           <button onClick={handleStart} disabled={running} style={{ marginBottom: 2 }}>Start</button>
@@ -653,7 +653,7 @@ function App() {
         </>}
       </div>
       {/* Main grid area */}
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#111' }}>
+      <div style={{ height: '100vh', width: '100vw', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div className="grid">
           <canvas
             ref={canvasRef}
