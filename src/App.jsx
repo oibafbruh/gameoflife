@@ -87,6 +87,8 @@ function App() {
   const minimapRef = useRef(null);
   const [brushSize, setBrushSize] = useState(1);
   const [mousePos, setMousePos] = useState(null); // {i, j} or null
+  const [showSidebar, setShowSidebar] = useState(true);
+  const [showGridLines, setShowGridLines] = useState(true);
 
   // Keep refs in sync
   useEffect(() => { liveCellsRef.current = liveCells; }, [liveCells]);
@@ -240,10 +242,11 @@ function App() {
   // Paint a circular brush of the selected size (in pixels)
   const paintBrush = (centerX, centerY, mode) => {
     const cellSize = cellSizeRef.current;
-    const radius = brushSize / 2 / cellSize;
-    for (let dx = Math.floor(-radius); dx <= Math.ceil(radius); dx++) {
-      for (let dy = Math.floor(-radius); dy <= Math.ceil(radius); dy++) {
-        if (dx * dx + dy * dy <= radius * radius) {
+    const radiusPx = brushSize / 2;
+    const radiusCells = radiusPx / cellSize;
+    for (let dx = Math.floor(-radiusCells); dx <= Math.ceil(radiusCells); dx++) {
+      for (let dy = Math.floor(-radiusCells); dy <= Math.ceil(radiusCells); dy++) {
+        if ((dx * cellSize) ** 2 + (dy * cellSize) ** 2 <= radiusPx * radiusPx) {
           paintCell(centerX + dx, centerY + dy, mode);
         }
       }
@@ -367,20 +370,22 @@ function App() {
         ctx.fill();
         ctx.restore();
       }
-      // Draw grid lines
-      ctx.strokeStyle = '#444';
-      ctx.lineWidth = 1;
-      for (let i = 0; i <= VIEW_ROWS; i++) {
-        ctx.beginPath();
-        ctx.moveTo(0, i * cellSize);
-        ctx.lineTo(VIEW_COLS * cellSize, i * cellSize);
-        ctx.stroke();
-      }
-      for (let j = 0; j <= VIEW_COLS; j++) {
-        ctx.beginPath();
-        ctx.moveTo(j * cellSize, 0);
-        ctx.lineTo(j * cellSize, VIEW_ROWS * cellSize);
-        ctx.stroke();
+      // Draw grid lines (if enabled)
+      if (showGridLines) {
+        ctx.strokeStyle = '#444';
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= VIEW_ROWS; i++) {
+          ctx.beginPath();
+          ctx.moveTo(0, i * cellSize);
+          ctx.lineTo(VIEW_COLS * cellSize, i * cellSize);
+          ctx.stroke();
+        }
+        for (let j = 0; j <= VIEW_COLS; j++) {
+          ctx.beginPath();
+          ctx.moveTo(j * cellSize, 0);
+          ctx.lineTo(j * cellSize, VIEW_ROWS * cellSize);
+          ctx.stroke();
+        }
       }
       // Fill background black
       ctx.globalCompositeOperation = 'destination-over';
@@ -391,7 +396,7 @@ function App() {
     };
     draw();
     return () => cancelAnimationFrame(animationFrameId);
-  }, [brushSize, mousePos]);
+  }, [brushSize, mousePos, showGridLines]);
 
   // Export pattern as JSON
   const handleExport = () => {
@@ -590,68 +595,81 @@ function App() {
     return { cells: normCells, width, height };
   }
 
-  // UI: original Vite/React style
+  // UI: sidebar for options, grid fills rest
   return (
-    <div className="game-container">
-      <div className="controls">
-        <button onClick={handleStart} disabled={running}>Start</button>
-        <button onClick={handleStop} disabled={!running}>Stop</button>
-        <button onClick={handleStep} disabled={running}>Step</button>
-        <button onClick={handleClear}>Clear</button>
-        <button onClick={handleExport}>Export</button>
-        <button onClick={handleImportClick}>Import</button>
-        <input
-          type="file"
-          accept=".rle,.lif,.lif.txt"
-          ref={fileInputRef}
-          style={{ display: 'none' }}
-          onChange={handleFileChange}
-        />
-        <label style={{ marginLeft: 16 }}>
-          Speed:
+    <div style={{ display: 'flex', height: '100vh', width: '100vw', position: 'relative' }}>
+      {/* Sidebar */}
+      <div style={{ width: showSidebar ? 260 : 40, background: '#232b3a', color: '#fff', transition: 'width 0.2s', overflow: 'hidden', boxShadow: '2px 0 8px #0002', display: 'flex', flexDirection: 'column', alignItems: showSidebar ? 'flex-start' : 'center', padding: showSidebar ? '18px 12px 12px 12px' : '18px 0 0 0' }}>
+        <button onClick={() => setShowSidebar(s => !s)} style={{ marginBottom: 18, width: 32, height: 32, borderRadius: 8, border: 'none', background: '#333', color: '#fff', fontWeight: 700, fontSize: 18, cursor: 'pointer' }}>{showSidebar ? '⏴' : '⏵'}</button>
+        {showSidebar && <>
+          <button onClick={handleStart} disabled={running} style={{ marginBottom: 2 }}>Start</button>
+          <button onClick={handleStop} disabled={!running} style={{ marginBottom: 2 }}>Stop</button>
+          <button onClick={handleStep} disabled={running} style={{ marginBottom: 2 }}>Step</button>
+          <button onClick={handleClear} style={{ marginBottom: 8 }}>Clear</button>
+          <button onClick={handleExport} style={{ marginBottom: 2 }}>Export</button>
+          <button onClick={handleImportClick} style={{ marginBottom: 8 }}>Import</button>
           <input
-            type="range"
-            min={MIN_SPEED}
-            max={MAX_SPEED}
-            step={1}
-            value={speed}
-            onChange={e => setSpeed(Number(e.target.value))}
-            style={{ verticalAlign: 'middle' }}
+            type="file"
+            accept=".rle,.lif,.lif.txt"
+            ref={fileInputRef}
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
           />
-          {speed}ms
-        </label>
-        <label style={{ marginLeft: 16 }}>
-          Zoom:
-          <button onClick={() => setCellSize(s => Math.max(MIN_CELL_SIZE, s - 2))} disabled={cellSize <= MIN_CELL_SIZE}>-</button>
-          <span style={{ margin: '0 8px' }}>{cellSize}px</span>
-          <button onClick={() => setCellSize(s => Math.min(MAX_CELL_SIZE, s + 2))} disabled={cellSize >= MAX_CELL_SIZE}>+</button>
-        </label>
-        <label style={{ marginLeft: 16 }}>
-          Brush:
-          <input
-            type="range"
-            min={1}
-            max={30}
-            step={1}
-            value={brushSize}
-            onChange={e => setBrushSize(Number(e.target.value))}
-            style={{ verticalAlign: 'middle', width: 80 }}
-          />
-          {brushSize}px
-        </label>
+          <label style={{ margin: '8px 0 0 0', display: 'block' }}>
+            Speed:
+            <input
+              type="range"
+              min={MIN_SPEED}
+              max={MAX_SPEED}
+              step={1}
+              value={speed}
+              onChange={e => setSpeed(Number(e.target.value))}
+              style={{ verticalAlign: 'middle', width: 120 }}
+            />
+            {speed}ms
+          </label>
+          <label style={{ margin: '8px 0 0 0', display: 'block' }}>
+            Zoom:
+            <button onClick={() => setCellSize(s => Math.max(MIN_CELL_SIZE, s - 2))} disabled={cellSize <= MIN_CELL_SIZE}>-</button>
+            <span style={{ margin: '0 8px' }}>{cellSize}px</span>
+            <button onClick={() => setCellSize(s => Math.min(MAX_CELL_SIZE, s + 2))} disabled={cellSize >= MAX_CELL_SIZE}>+</button>
+          </label>
+          <label style={{ margin: '8px 0 0 0', display: 'block' }}>
+            Brush:
+            <input
+              type="range"
+              min={1}
+              max={30}
+              step={1}
+              value={brushSize}
+              onChange={e => setBrushSize(Number(e.target.value))}
+              style={{ verticalAlign: 'middle', width: 80 }}
+            />
+            {brushSize}px
+          </label>
+          <label style={{ margin: '8px 0 0 0', display: 'block' }}>
+            <input type="checkbox" checked={showGridLines} onChange={e => setShowGridLines(e.target.checked)} style={{ marginRight: 6 }} /> Show Grid Lines
+          </label>
+        </>}
       </div>
-      <div className="grid">
-        <canvas
-          ref={canvasRef}
-          width={VIEW_COLS * cellSize}
-          height={VIEW_ROWS * cellSize}
-          style={{ display: 'block', background: '#000', border: '2px solid #333' }}
-          onMouseDown={handleCanvasMouseDown}
-          onMouseMove={handleGridMouseMove}
-          onMouseUp={handleCanvasMouseUp}
-          onMouseLeave={handleGridMouseLeave}
-          onContextMenu={handleContextMenu}
-        />
+      {/* Main grid area */}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#111' }}>
+        <div className="grid">
+          <canvas
+            ref={canvasRef}
+            width={VIEW_COLS * cellSize}
+            height={VIEW_ROWS * cellSize}
+            style={{ display: 'block', background: '#000', border: '2px solid #333' }}
+            onMouseDown={handleCanvasMouseDown}
+            onMouseMove={handleGridMouseMove}
+            onMouseUp={handleCanvasMouseUp}
+            onMouseLeave={handleGridMouseLeave}
+            onContextMenu={handleContextMenu}
+          />
+        </div>
+      </div>
+      <div style={{ position: 'fixed', left: 10, bottom: 10, color: '#888', fontSize: 15, fontWeight: 500, zIndex: 100 }}>
+        Experimental Project - Fabio Bauer
       </div>
     </div>
   );
