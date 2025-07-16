@@ -311,11 +311,15 @@ function App() {
           } else {
             fadeMap.delete(key);
           }
-          // Draw cell with fade and age color
+          // Draw cell with fade and age color, with glow
           if (fade > 0) {
             const age = ageMap.get(key) || 0;
+            ctx.save();
+            ctx.shadowColor = getCellColor(age, fade);
+            ctx.shadowBlur = 16 * fade;
             ctx.fillStyle = getCellColor(age, fade);
             ctx.fillRect(j * cellSize, i * cellSize, cellSize, cellSize);
+            ctx.restore();
           }
         }
       }
@@ -545,13 +549,13 @@ function App() {
   return (
     <div style={{ height: '100vh', width: '100vw', overflow: 'hidden', margin: 0, padding: 0, position: 'relative' }}>
       {/* Floating Controls Overlay */}
-      <div style={{ position: 'absolute', top: 16, left: 16, zIndex: 10, background: 'rgba(34,34,34,0.95)', color: '#fff', padding: 16, borderRadius: 8, boxShadow: '0 2px 8px #0004', display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 10, minWidth: 160 }}>
-        <button onClick={handleStart} disabled={running} style={{ marginBottom: 2 }}>Start</button>
-        <button onClick={handleStop} disabled={!running} style={{ marginBottom: 2 }}>Stop</button>
-        <button onClick={handleStep} disabled={running} style={{ marginBottom: 2 }}>Step</button>
-        <button onClick={handleClear} style={{ marginBottom: 8 }}>Clear</button>
-        <button onClick={handleExport} style={{ marginBottom: 2 }}>Export</button>
-        <button onClick={handleImportClick} style={{ marginBottom: 8 }}>Import</button>
+      <div className="controls-overlay" style={{ position: 'absolute', top: 16, left: 16, zIndex: 10 }}>
+        <button onClick={handleStart} disabled={running} style={{ marginBottom: 2 }}>▶️ Start</button>
+        <button onClick={handleStop} disabled={!running} style={{ marginBottom: 2 }}>⏹️ Stop</button>
+        <button onClick={handleStep} disabled={running} style={{ marginBottom: 2 }}>⏭️ Step</button>
+        <button onClick={handleClear} style={{ marginBottom: 8 }}>🧹 Clear</button>
+        <button onClick={handleExport} style={{ marginBottom: 2 }}>⬇️ Export</button>
+        <button onClick={handleImportClick} style={{ marginBottom: 8 }}>⬆️ Import</button>
         <input
           type="file"
           accept=".rle,.lif,.lif.txt"
@@ -575,12 +579,12 @@ function App() {
         <label style={{ fontSize: 13, marginBottom: 2 }}>
           Zoom:
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <button onClick={() => setCellSize(s => Math.max(MIN_CELL_SIZE, s - 2))} disabled={cellSize <= MIN_CELL_SIZE}>-</button>
+            <button onClick={() => setCellSize(s => Math.max(MIN_CELL_SIZE, s - 2))} disabled={cellSize <= MIN_CELL_SIZE}>➖</button>
             <span style={{ margin: '0 8px', fontSize: 12 }}>{cellSize}px</span>
-            <button onClick={() => setCellSize(s => Math.min(MAX_CELL_SIZE, s + 2))} disabled={cellSize >= MAX_CELL_SIZE}>+</button>
+            <button onClick={() => setCellSize(s => Math.min(MAX_CELL_SIZE, s + 2))} disabled={cellSize >= MAX_CELL_SIZE}>➕</button>
           </div>
         </label>
-        <div style={{ fontSize: 12, color: '#bbb', marginTop: 4, lineHeight: 1.5 }}>
+        <div className="cell-age-legend" style={{ fontSize: 12, color: '#bbb', marginTop: 4, lineHeight: 1.5 }}>
           <b>Controls:</b><br />
           Pan: Right mouse drag or arrow keys<br />
           Paint: Left drag<br />
@@ -589,7 +593,7 @@ function App() {
           Speed: slider<br />
           <span style={{ color: '#fff', fontWeight: 'bold' }}>Cell Age:</span><br />
           <span style={{ color: '#fff' }}>White</span> (new), <span style={{ color: 'red' }}>Red</span> (10+), <span style={{ color: 'yellow' }}>Yellow</span> (20+), <span style={{ color: 'lime' }}>Green</span> (40+)
-          <div style={{ marginTop: 10, color: '#0ff', fontWeight: 'bold', fontSize: 13 }}>
+          <div className="footer" style={{ marginTop: 10, color: '#0ff', fontWeight: 'bold', fontSize: 13 }}>
             Experimental Cursor Trials - Fabio Bauer 2025
           </div>
         </div>
@@ -611,7 +615,7 @@ function App() {
         ref={minimapRef}
         width={180}
         height={180}
-        style={{ position: 'absolute', top: 16, right: 16, zIndex: 20, background: '#111', border: '2px solid #0ff', borderRadius: 8, boxShadow: '0 2px 8px #0008' }}
+        className="minimap"
       />
     </div>
   );
