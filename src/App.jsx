@@ -246,7 +246,8 @@ function App() {
     const radiusCells = radiusPx / cellSize;
     for (let dx = Math.floor(-radiusCells); dx <= Math.ceil(radiusCells); dx++) {
       for (let dy = Math.floor(-radiusCells); dy <= Math.ceil(radiusCells); dy++) {
-        if ((dx * cellSize) ** 2 + (dy * cellSize) ** 2 <= radiusPx * radiusPx) {
+        // FIX: Use cell units for brush area
+        if ((dx ** 2 + dy ** 2) <= radiusCells ** 2) {
           paintCell(centerX + dx, centerY + dy, mode);
         }
       }
@@ -602,12 +603,12 @@ function App() {
       <div style={{ position: 'fixed', top: 18, left: 18, zIndex: 100, width: showSidebar ? 260 : 40, background: '#232b3a', color: '#fff', borderRadius: 14, boxShadow: '0 4px 24px #0008', border: '1.5px solid #0ff6', transition: 'width 0.2s', overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: showSidebar ? 'flex-start' : 'center', padding: showSidebar ? '18px 12px 12px 12px' : '18px 0 0 0' }}>
         <button onClick={() => setShowSidebar(s => !s)} style={{ marginBottom: 18, width: 32, height: 32, borderRadius: 8, border: 'none', background: '#333', color: '#fff', fontWeight: 700, fontSize: 18, cursor: 'pointer' }}>{showSidebar ? '⏴' : '⏵'}</button>
         {showSidebar && <>
-          <button onClick={handleStart} disabled={running} style={{ marginBottom: 2 }}>Start</button>
-          <button onClick={handleStop} disabled={!running} style={{ marginBottom: 2 }}>Stop</button>
-          <button onClick={handleStep} disabled={running} style={{ marginBottom: 2 }}>Step</button>
-          <button onClick={handleClear} style={{ marginBottom: 8 }}>Clear</button>
-          <button onClick={handleExport} style={{ marginBottom: 2 }}>Export</button>
-          <button onClick={handleImportClick} style={{ marginBottom: 8 }}>Import</button>
+          <button onClick={handleStart} disabled={running} className="sidebar-btn">Start</button>
+          <button onClick={handleStop} disabled={!running} className="sidebar-btn">Stop</button>
+          <button onClick={handleStep} disabled={running} className="sidebar-btn">Step</button>
+          <button onClick={handleClear} className="sidebar-btn">Clear</button>
+          <button onClick={handleExport} className="sidebar-btn">Export</button>
+          <button onClick={handleImportClick} className="sidebar-btn">Import</button>
           <input
             type="file"
             accept=".rle,.lif,.lif.txt"
@@ -630,9 +631,9 @@ function App() {
           </label>
           <label style={{ margin: '8px 0 0 0', display: 'block' }}>
             Zoom:
-            <button onClick={() => setCellSize(s => Math.max(MIN_CELL_SIZE, s - 2))} disabled={cellSize <= MIN_CELL_SIZE}>-</button>
+            <button onClick={() => setCellSize(s => Math.max(MIN_CELL_SIZE, s - 2))} disabled={cellSize <= MIN_CELL_SIZE} className="sidebar-btn" style={{ width: 36, padding: 0 }}>-</button>
             <span style={{ margin: '0 8px' }}>{cellSize}px</span>
-            <button onClick={() => setCellSize(s => Math.min(MAX_CELL_SIZE, s + 2))} disabled={cellSize >= MAX_CELL_SIZE}>+</button>
+            <button onClick={() => setCellSize(s => Math.min(MAX_CELL_SIZE, s + 2))} disabled={cellSize >= MAX_CELL_SIZE} className="sidebar-btn" style={{ width: 36, padding: 0 }}>+</button>
           </label>
           <label style={{ margin: '8px 0 0 0', display: 'block' }}>
             Brush:
@@ -653,13 +654,15 @@ function App() {
         </>}
       </div>
       {/* Main grid area */}
-      <div style={{ height: '100vh', width: '100vw', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div className="grid">
+      <div style={{ height: '100vh', width: '100vw', display: 'flex', flexDirection: 'row', alignItems: 'stretch', justifyContent: 'flex-start' }}>
+        {/* Sidebar space (invisible, for layout) */}
+        <div style={{ width: showSidebar ? 260 : 40, flexShrink: 0 }} />
+        <div className="grid" style={{ flex: 1, height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
           <canvas
             ref={canvasRef}
             width={VIEW_COLS * cellSize}
             height={VIEW_ROWS * cellSize}
-            style={{ display: 'block', background: '#000', border: '2px solid #333' }}
+            style={{ display: 'block', background: '#000', border: '2px solid #333', width: '100%', height: '100%' }}
             onMouseDown={handleCanvasMouseDown}
             onMouseMove={handleGridMouseMove}
             onMouseUp={handleCanvasMouseUp}

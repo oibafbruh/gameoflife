@@ -81,3 +81,28 @@ div.game-container {
 .cell.alive {
   background: #333;
 }
+
+.sidebar-btn {
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 0.6em 0;
+  font-size: 1.1em;
+  font-weight: 500;
+  border-radius: 8px;
+  border: none;
+  background: #1a1a1a;
+  color: #fff;
+  transition: background 0.2s, box-shadow 0.2s;
+  box-shadow: 0 1px 4px #0003;
+  cursor: pointer;
+  outline: none;
+}
+.sidebar-btn:disabled {
+  background: #333;
+  color: #888;
+  cursor: not-allowed;
+}
+.sidebar-btn:not(:disabled):hover {
+  background: #0077ff;
+  color: #fff;
+}
