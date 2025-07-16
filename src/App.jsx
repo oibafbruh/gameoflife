@@ -41,6 +41,17 @@ function App() {
   const [fps, setFps] = useState(60);
   const lastFrameTime = useRef(performance.now());
   const frameCount = useRef(0);
+  // Mobile hint state
+  const [showMobileHint, setShowMobileHint] = useState(false);
+  useEffect(() => {
+    if (window.innerWidth < 700 && !localStorage.getItem('golMobileHint')) {
+      setShowMobileHint(true);
+      setTimeout(() => {
+        setShowMobileHint(false);
+        localStorage.setItem('golMobileHint', '1');
+      }, 3500);
+    }
+  }, []);
 
   // Keep refs in sync
   useEffect(() => { liveCellsRef.current = liveCells; }, [liveCells]);
@@ -613,49 +624,126 @@ function App() {
     return { cells: normCells, width, height };
   }
 
-  // Touch support for painting and panning
+  // Pinch-to-zoom and improved touch support
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    let lastTouch = null;
+    let lastTouchDist = null;
+    let lastTouchCenter = null;
+    let isPinching = false;
     let isPanning = false;
     let panStart = null;
+    let lastTouch = null;
+    const getTouchDist = (e) => {
+      if (e.touches.length < 2) return 0;
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    };
+    const getTouchCenter = (e) => {
+      if (e.touches.length < 2) return { x: 0, y: 0 };
+      return {
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+      };
+    };
     const handleTouchStart = (e) => {
       if (e.touches.length === 1) {
-        // Single finger: paint
         paintingRef.current = true;
         paintModeRef.current = 'alive';
         lastTouch = e.touches[0];
         paintCellFromEvent(e.touches[0], 'alive');
       } else if (e.touches.length === 2) {
-        // Two fingers: pan
+        isPinching = true;
+        lastTouchDist = getTouchDist(e);
+        lastTouchCenter = getTouchCenter(e);
         isPanning = true;
-        panStart = [e.touches[0].clientX, e.touches[0].clientY, viewportRef.current.x, viewportRef.current.y];
+        panStart = [lastTouchCenter.x, lastTouchCenter.y, viewportRef.current.x, viewportRef.current.y];
       }
+      e.preventDefault();
     };
     const handleTouchMove = (e) => {
-      if (isPanning && e.touches.length === 2) {
-        const dx = Math.round((e.touches[0].clientY - panStart[1]) / cellSizeRef.current);
-        const dy = Math.round((e.touches[0].clientX - panStart[0]) / cellSizeRef.current);
+      if (isPinching && e.touches.length === 2) {
+        const newDist = getTouchDist(e);
+        const scale = newDist / lastTouchDist;
+        setCellSize(s => {
+          let next = Math.round(s * scale);
+          next = Math.max(MIN_CELL_SIZE, Math.min(MAX_CELL_SIZE, next));
+          return next;
+        });
+        lastTouchDist = newDist;
+        // Pan with pinch center
+        const center = getTouchCenter(e);
+        const dx = Math.round((center.y - panStart[1]) / cellSizeRef.current);
+        const dy = Math.round((center.x - panStart[0]) / cellSizeRef.current);
+        setViewport({ x: panStart[2] - dx, y: panStart[3] - dy });
+      } else if (isPanning && e.touches.length === 2) {
+        const center = getTouchCenter(e);
+        const dx = Math.round((center.y - panStart[1]) / cellSizeRef.current);
+        const dy = Math.round((center.x - panStart[0]) / cellSizeRef.current);
         setViewport({ x: panStart[2] - dx, y: panStart[3] - dy });
       } else if (paintingRef.current && e.touches.length === 1) {
         paintCellFromEvent(e.touches[0], paintModeRef.current);
       }
+      e.preventDefault();
     };
     const handleTouchEnd = (e) => {
       paintingRef.current = false;
+      isPinching = false;
       isPanning = false;
       panStart = null;
+      lastTouchDist = null;
+      lastTouchCenter = null;
     };
     canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
     canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
     canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+    // Prevent browser scrolling
+    canvas.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
     return () => {
       canvas.removeEventListener('touchstart', handleTouchStart);
       canvas.removeEventListener('touchmove', handleTouchMove);
       canvas.removeEventListener('touchend', handleTouchEnd);
+      canvas.removeEventListener('touchmove', e => e.preventDefault());
     };
   }, [cellSize]);
+
+  // Minimap tap-to-pan
+  useEffect(() => {
+    const canvas = minimapRef.current;
+    if (!canvas) return;
+    const handleMinimapTap = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.touches ? e.touches[0].clientX : e.clientX;
+      const y = e.touches ? e.touches[0].clientY : e.clientY;
+      const px = x - rect.left;
+      const py = y - rect.top;
+      // Find bounds
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const key of liveCellsRef.current) {
+        const { x, y } = parseKey(key);
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+      minX -= 2; maxX += 2; minY -= 2; maxY += 2;
+      const width = maxY - minY + 1;
+      const height = maxX - minX + 1;
+      const mapW = canvas.width, mapH = canvas.height;
+      const scale = Math.min(mapW / width, mapH / height);
+      // Center viewport on tap
+      const gridY = Math.round(px / scale) + minY;
+      const gridX = Math.round(py / scale) + minX;
+      setViewport({ x: gridX, y: gridY });
+    };
+    canvas.addEventListener('click', handleMinimapTap);
+    canvas.addEventListener('touchstart', handleMinimapTap);
+    return () => {
+      canvas.removeEventListener('click', handleMinimapTap);
+      canvas.removeEventListener('touchstart', handleMinimapTap);
+    };
+  }, [liveCells, cellSize, dimensions]);
 
   // Hide grid lines by default on mobile
   useEffect(() => {
@@ -811,6 +899,14 @@ function App() {
           <span style={{ color: fps < 10 ? '#ff4444' : fps < 28 ? '#ffe066' : fps >= 40 ? '#00ff66' : '#fff' }}>Performance: {fps} FPS</span>
         </div>
       </div>
+      {/* Mobile hint */}
+      {showMobileHint && (
+        <div className="mobile-hint">
+          Drag to paint, two fingers to pan, pinch to zoom.<br/>
+          Tap minimap to pan.<br/>
+          <span style={{ fontSize: '0.9em', color: '#0ff' }}>Welcome to Game of Life!</span>
+        </div>
+      )}
       <div style={{ position: 'fixed', left: 10, bottom: 10, color: '#888', fontSize: 15, fontWeight: 500, zIndex: 100 }}>
         Experimental Project - Fabio Bauer
       </div>
