@@ -600,19 +600,17 @@ function App() {
       </div>
       {/* Main grid area */}
       <div style={{ height: '100vh', width: '100vw', marginLeft: showSidebar ? 260 : 40, transition: 'margin-left 0.2s', background: '#000' }}>
-        <div className="grid" style={{ width: '100%', height: '100%', background: '#000' }}>
-          <canvas
-            ref={canvasRef}
-            width={VIEW_COLS * cellSize}
-            height={VIEW_ROWS * cellSize}
-            style={{ display: 'block', background: '#000', border: '2px solid #333', width: '100%', height: '100%' }}
-            onMouseDown={handleCanvasMouseDown}
-            onMouseMove={handleGridMouseMove}
-            onMouseUp={handleCanvasMouseUp}
-            onMouseLeave={handleGridMouseLeave}
-            onContextMenu={handleContextMenu}
-          />
-        </div>
+        <GameCanvas
+          canvasRef={canvasRef}
+          VIEW_COLS={VIEW_COLS}
+          VIEW_ROWS={VIEW_ROWS}
+          cellSize={cellSize}
+          handleCanvasMouseDown={handleCanvasMouseDown}
+          handleGridMouseMove={handleGridMouseMove}
+          handleCanvasMouseUp={handleCanvasMouseUp}
+          handleGridMouseLeave={handleGridMouseLeave}
+          handleContextMenu={handleContextMenu}
+        />
       </div>
       <div style={{ position: 'fixed', left: 10, bottom: 10, color: '#888', fontSize: 15, fontWeight: 500, zIndex: 100 }}>
         Experimental Project - Fabio Bauer
