@@ -921,14 +921,14 @@ function App() {
         traceMapRef.current.add(key);
         if (showHeatmap) {
           const prev = heatMap.get(key) || 0;
-          heatMap.set(key, prev + 1);
+          heatMap.set(key, Math.round(prev + 1));
         }
       }
       // Cool-off: decrease heat for all cells if enabled
       if (showHeatmap && coolOff) {
         for (const [key, value] of heatMap.entries()) {
           if (!liveCells.has(key)) {
-            heatMap.set(key, Math.max(0, value - 0.025));
+            heatMap.set(key, Math.max(0, Math.round(value - 0.025)));
           }
         }
       }
@@ -941,7 +941,7 @@ function App() {
           if (value > SPREAD_THRESHOLD) {
             const spread = value * SPREAD_FRACTION;
             const remain = value - spread;
-            heatMap.set(key, remain);
+            heatMap.set(key, Math.round(remain));
             // Spread to 8 neighbors
             const { x, y } = parseKey(key);
             const perNeighbor = spread / 8;
@@ -954,9 +954,9 @@ function App() {
             }
           }
         }
-        // Apply tempMap to heatMap
+        // Apply tempMap to heatMap, rounding
         for (const [key, add] of tempMap.entries()) {
-          heatMap.set(key, (heatMap.get(key) || 0) + add);
+          heatMap.set(key, Math.round((heatMap.get(key) || 0) + add));
         }
       }
       // Update prevLiveCellsRef for next generation
