@@ -311,15 +311,11 @@ function App() {
           } else {
             fadeMap.delete(key);
           }
-          // Draw cell with fade and age color, with glow
+          // Draw cell with fade and age color (no glow for performance)
           if (fade > 0) {
             const age = ageMap.get(key) || 0;
-            ctx.save();
-            ctx.shadowColor = getCellColor(age, fade);
-            ctx.shadowBlur = 16 * fade;
             ctx.fillStyle = getCellColor(age, fade);
             ctx.fillRect(j * cellSize, i * cellSize, cellSize, cellSize);
-            ctx.restore();
           }
         }
       }
@@ -550,12 +546,12 @@ function App() {
     <div style={{ height: '100vh', width: '100vw', overflow: 'hidden', margin: 0, padding: 0, position: 'relative' }}>
       {/* Floating Controls Overlay */}
       <div className="controls-overlay" style={{ position: 'absolute', top: 16, left: 16, zIndex: 10 }}>
-        <button onClick={handleStart} disabled={running} style={{ marginBottom: 2 }}>▶️ Start</button>
-        <button onClick={handleStop} disabled={!running} style={{ marginBottom: 2 }}>⏹️ Stop</button>
-        <button onClick={handleStep} disabled={running} style={{ marginBottom: 2 }}>⏭️ Step</button>
-        <button onClick={handleClear} style={{ marginBottom: 8 }}>🧹 Clear</button>
-        <button onClick={handleExport} style={{ marginBottom: 2 }}>⬇️ Export</button>
-        <button onClick={handleImportClick} style={{ marginBottom: 8 }}>⬆️ Import</button>
+        <button onClick={handleStart} disabled={running} style={{ marginBottom: 2 }}>Start</button>
+        <button onClick={handleStop} disabled={!running} style={{ marginBottom: 2 }}>Stop</button>
+        <button onClick={handleStep} disabled={running} style={{ marginBottom: 2 }}>Step</button>
+        <button onClick={handleClear} style={{ marginBottom: 8 }}>Clear</button>
+        <button onClick={handleExport} style={{ marginBottom: 2 }}>Export</button>
+        <button onClick={handleImportClick} style={{ marginBottom: 8 }}>Import</button>
         <input
           type="file"
           accept=".rle,.lif,.lif.txt"
@@ -579,9 +575,9 @@ function App() {
         <label style={{ fontSize: 13, marginBottom: 2 }}>
           Zoom:
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <button onClick={() => setCellSize(s => Math.max(MIN_CELL_SIZE, s - 2))} disabled={cellSize <= MIN_CELL_SIZE}>➖</button>
+            <button onClick={() => setCellSize(s => Math.max(MIN_CELL_SIZE, s - 2))} disabled={cellSize <= MIN_CELL_SIZE}>-</button>
             <span style={{ margin: '0 8px', fontSize: 12 }}>{cellSize}px</span>
-            <button onClick={() => setCellSize(s => Math.min(MAX_CELL_SIZE, s + 2))} disabled={cellSize >= MAX_CELL_SIZE}>➕</button>
+            <button onClick={() => setCellSize(s => Math.min(MAX_CELL_SIZE, s + 2))} disabled={cellSize >= MAX_CELL_SIZE}>+</button>
           </div>
         </label>
         <div className="cell-age-legend" style={{ fontSize: 12, color: '#bbb', marginTop: 4, lineHeight: 1.5 }}>

@@ -15,18 +15,17 @@ body, html, #root {
   top: 16px;
   left: 16px;
   z-index: 10;
-  background: rgba(30, 34, 44, 0.85);
-  box-shadow: 0 4px 32px #0008, 0 1.5px 8px #0ff4;
-  border-radius: 18px;
-  padding: 22px 20px 18px 20px;
-  backdrop-filter: blur(12px) saturate(1.2);
-  border: 1.5px solid #0ff6;
+  background: #232b3a;
+  border-radius: 10px;
+  padding: 16px 12px 12px 12px;
+  border: 1.5px solid #ffe066;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 14px;
-  min-width: 200px;
-  transition: box-shadow 0.2s;
+  gap: 10px;
+  min-width: 160px;
+  box-shadow: none;
+  transition: none;
 }
 
 .controls-overlay label {
@@ -37,7 +36,7 @@ body, html, #root {
 }
 
 .controls-overlay button {
-  background: linear-gradient(90deg, #0ff6 0%, #00f2fe 100%);
+  background: #ffe066;
   color: #181c24;
   font-weight: 600;
   border: none;
@@ -46,8 +45,8 @@ body, html, #root {
   margin-bottom: 2px;
   font-size: 15px;
   cursor: pointer;
-  box-shadow: 0 1.5px 8px #0ff2;
-  transition: background 0.18s, color 0.18s, box-shadow 0.18s, transform 0.12s;
+  box-shadow: none;
+  transition: filter 0.12s, background 0.12s, color 0.12s;
   outline: none;
 }
 .controls-overlay button:disabled {
@@ -57,10 +56,10 @@ body, html, #root {
   box-shadow: none;
 }
 .controls-overlay button:not(:disabled):hover {
-  background: linear-gradient(90deg, #00f2fe 0%, #0ff6 100%);
-  color: #0ff;
-  transform: translateY(-2px) scale(1.04);
-  box-shadow: 0 4px 16px #0ff6;
+  filter: brightness(0.95);
+  background: #ffe066;
+  color: #181c24;
+  transform: none;
 }
 
 .controls-overlay input[type="range"] {
@@ -97,11 +96,11 @@ body, html, #root {
   top: 16px;
   right: 16px;
   z-index: 20;
-  background: #111d;
-  border: 2.5px solid #0ff;
-  border-radius: 16px;
-  box-shadow: 0 4px 32px #000a, 0 1.5px 8px #0ff4;
-  transition: box-shadow 0.2s;
+  background: #181c24;
+  border: 2px solid #ffe066;
+  border-radius: 10px;
+  box-shadow: none;
+  transition: none;
 }
 
 /* Responsive */
