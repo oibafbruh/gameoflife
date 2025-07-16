@@ -186,28 +186,24 @@ function App() {
     const gridY = viewport.y + (mouseX / cellSize) - (VIEW_COLS / 2);
     paintBrush(gridX, gridY, mode);
   };
-  // Paint a circular brush of the selected size (in pixels)
+  // Paint a circular brush of the selected size (in grid cells)
   const paintBrush = (centerX, centerY, mode) => {
-    const cellSize = cellSizeRef.current;
-    const radiusPx = Math.max(brushSize / 2, 0.5); // always at least 0.5px
-    // Compute the bounding box in cell space
-    const minCellX = Math.floor(centerX - radiusPx / cellSize);
-    const maxCellX = Math.ceil(centerX + radiusPx / cellSize);
-    const minCellY = Math.floor(centerY - radiusPx / cellSize);
-    const maxCellY = Math.ceil(centerY + radiusPx / cellSize);
+    const radiusCells = Math.max(brushSize / 2, 0.5); // always at least 0.5 cells
+    const minCellX = Math.floor(centerX - radiusCells);
+    const maxCellX = Math.ceil(centerX + radiusCells);
+    const minCellY = Math.floor(centerY - radiusCells);
+    const maxCellY = Math.ceil(centerY + radiusCells);
     let painted = false;
     for (let x = minCellX; x <= maxCellX; x++) {
       for (let y = minCellY; y <= maxCellY; y++) {
-        // Center of this cell in pixel space relative to brush center
-        const px = (x + 0.5 - centerX) * cellSize;
-        const py = (y + 0.5 - centerY) * cellSize;
-        if (Math.sqrt(px * px + py * py) <= radiusPx) {
+        const dx = x + 0.5 - centerX;
+        const dy = y + 0.5 - centerY;
+        if (Math.sqrt(dx * dx + dy * dy) <= radiusCells) {
           paintCell(x, y, mode);
           painted = true;
         }
       }
     }
-    // Always paint at least the center cell if nothing else
     if (!painted) {
       paintCell(Math.round(centerX), Math.round(centerY), mode);
     }
@@ -373,6 +369,14 @@ function App() {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Draw black background
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Draw label
+    ctx.font = '16px sans-serif';
+    ctx.fillStyle = '#0ff';
+    ctx.textAlign = 'center';
+    ctx.fillText('Minimap', canvas.width / 2, 20);
     const liveCells = liveCellsRef.current;
     if (liveCells.size === 0) return;
     // Find bounds
