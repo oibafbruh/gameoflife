@@ -13,6 +13,49 @@ import {
 const MemoGameCanvas = memo(GameCanvas);
 
 function App() {
+  // Place color helpers at the top so they are always in scope
+  function lerpColor(a, b, t) {
+    // a, b: [r,g,b], t: 0-1
+    return [
+      Math.round(a[0] + (b[0] - a[0]) * t),
+      Math.round(a[1] + (b[1] - a[1]) * t),
+      Math.round(a[2] + (b[2] - a[2]) * t)
+    ];
+  }
+  function getHeatmapColor(norm) {
+    // norm: 0 (cold) to 1 (hot)
+    // 0.0: black, 0.08: dark blue, 0.25: purple, 0.5: yellow, 0.75: red, 1.0: white
+    const stops = [
+      [0.0, [0, 0, 0]],         // black (#000000)
+      [0.08, [0, 0, 139]],      // dark blue (#00008b)
+      [0.25, [128, 0, 128]],    // purple   (#800080)
+      [0.5, [255, 255, 0]],     // yellow   (#ffff00)
+      [0.75, [255, 0, 0]],      // red      (#ff0000)
+      [1.0, [255, 255, 255]],   // white    (#ffffff)
+    ];
+    for (let i = 1; i < stops.length; i++) {
+      if (norm <= stops[i][0]) {
+        const t = (norm - stops[i-1][0]) / (stops[i][0] - stops[i-1][0]);
+        const c = lerpColor(stops[i-1][1], stops[i][1], t);
+        return `rgb(${c[0]},${c[1]},${c[2]})`;
+      }
+    }
+    return 'rgb(255,255,255)';
+  }
+  // Trace and heatmap toggles and refs (must be before any useEffect that uses them)
+  const [showTrace, setShowTrace] = useState(false);
+  const [showHeatmap, setShowHeatmap] = useState(false);
+  const traceMapRef = useRef(new Set());
+  const heatMapRef = useRef(new Map());
+  // Add state for blur and cool-off toggles
+  const [blurHeatmap, setBlurHeatmap] = useState(false);
+  const [coolOff, setCoolOff] = useState(false);
+  // Add state for heat spread toggle
+  const [heatSpread, setHeatSpread] = useState(false);
+  // Add state for color by age toggle
+  const [colorByAge, setColorByAge] = useState(true);
+  // Step count (must be before any useEffect that uses it)
+  const [stepCount, setStepCount] = useState(0);
   const [liveCells, setLiveCells] = useState(new Set());
   const [ageMap, setAgeMap] = useState(new Map());
   const [running, setRunning] = useState(false);
@@ -43,6 +86,8 @@ function App() {
   const frameCount = useRef(0);
   // Mobile hint state
   const [showMobileHint, setShowMobileHint] = useState(false);
+  // Add state for hide UI
+  const [hideUI, setHideUI] = useState(false);
   useEffect(() => {
     if (window.innerWidth < 700 && !localStorage.getItem('golMobileHint')) {
       setShowMobileHint(true);
@@ -315,6 +360,94 @@ function App() {
       const fadeMap = fadeMapRef.current;
       const ageMap = ageMapRef.current;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // Draw trace (faint gray) if enabled
+      if (showTrace) {
+        ctx.save();
+        ctx.globalAlpha = 0.18;
+        ctx.fillStyle = '#aaa';
+        for (let i = 0; i < VIEW_ROWS; i++) {
+          for (let j = 0; j < VIEW_COLS; j++) {
+            const x = viewport.x + i - Math.floor(VIEW_ROWS / 2);
+            const y = viewport.y + j - Math.floor(VIEW_COLS / 2);
+            const key = getKey(x, y);
+            if (traceMapRef.current.has(key)) {
+              ctx.fillRect(j * cellSize, i * cellSize, cellSize, cellSize);
+            }
+          }
+        }
+        ctx.restore();
+      }
+      // Draw heatmap if enabled
+      if (showHeatmap) {
+        let maxHeat = 10;
+        if (showHeatmap) {
+          for (let i = 0; i < VIEW_ROWS; i++) {
+            for (let j = 0; j < VIEW_COLS; j++) {
+              const x = viewport.x + i - Math.floor(VIEW_ROWS / 2);
+              const y = viewport.y + j - Math.floor(VIEW_COLS / 2);
+              const key = getKey(x, y);
+              const count = heatMapRef.current.get(key) || 0;
+              if (count > maxHeat) maxHeat = count;
+            }
+          }
+          maxHeat = Math.max(maxHeat, 10); // Clamp to at least 10
+        }
+        if (blurHeatmap && !running) {
+          // Draw heatmap to offscreen, low-res canvas, blur, then draw to main canvas
+          const scale = 0.2; // 20% resolution for performance
+          const offW = Math.max(1, Math.floor(canvas.width * scale));
+          const offH = Math.max(1, Math.floor(canvas.height * scale));
+          const offCanvas = document.createElement('canvas');
+          offCanvas.width = offW;
+          offCanvas.height = offH;
+          const offCtx = offCanvas.getContext('2d');
+          // Draw heatmap to offscreen canvas
+          for (let i = 0; i < VIEW_ROWS; i++) {
+            for (let j = 0; j < VIEW_COLS; j++) {
+              const x = viewport.x + i - Math.floor(VIEW_ROWS / 2);
+              const y = viewport.y + j - Math.floor(VIEW_COLS / 2);
+              const key = getKey(x, y);
+              const count = heatMapRef.current.get(key) || 0;
+              if (count > 0) {
+                const blurHeatNorm = Math.min(1, count / maxHeat);
+                offCtx.fillStyle = getHeatmapColor(blurHeatNorm);
+                // Scale cell to offscreen canvas
+                const offX = Math.floor(j * cellSize * scale);
+                const offY = Math.floor(i * cellSize * scale);
+                const offCell = Math.ceil(cellSize * scale);
+                offCtx.fillRect(offX, offY, offCell, offCell);
+              }
+            }
+          }
+          // Apply blur filter
+          offCtx.filter = 'blur(6px)';
+          const blurred = offCtx.getImageData(0, 0, offW, offH);
+          offCtx.putImageData(blurred, 0, 0);
+          // Draw blurred heatmap to main canvas, scaled up
+          ctx.save();
+          ctx.globalAlpha = 0.85;
+          ctx.drawImage(offCanvas, 0, 0, canvas.width, canvas.height);
+          ctx.restore();
+        } else {
+          // Normal heatmap drawing
+          ctx.save();
+          ctx.globalCompositeOperation = 'source-over';
+          for (let i = 0; i < VIEW_ROWS; i++) {
+            for (let j = 0; j < VIEW_COLS; j++) {
+              const x = viewport.x + i - Math.floor(VIEW_ROWS / 2);
+              const y = viewport.y + j - Math.floor(VIEW_COLS / 2);
+              const key = getKey(x, y);
+              const count = heatMapRef.current.get(key) || 0;
+              if (count > 0) {
+                const mainHeatNorm = Math.min(1, count / maxHeat);
+                ctx.fillStyle = getHeatmapColor(mainHeatNorm);
+                ctx.fillRect(j * cellSize, i * cellSize, cellSize, cellSize);
+              }
+            }
+          }
+          ctx.restore();
+        }
+      }
       // Fade logic: update fadeMap for visible cells
       for (let i = 0; i < VIEW_ROWS; i++) {
         for (let j = 0; j < VIEW_COLS; j++) {
@@ -335,8 +468,14 @@ function App() {
           }
           // Draw cell with fade and age color (no glow for performance)
           if (fade > 0) {
-            const age = ageMap.get(key) || 0;
-            ctx.fillStyle = getCellColor(age, fade);
+            let fillStyle;
+            if (colorByAge) {
+              const age = ageMap.get(key) || 0;
+              fillStyle = getCellColor(age, fade);
+            } else {
+              fillStyle = `rgba(255,255,255,${fade})`;
+            }
+            ctx.fillStyle = fillStyle;
             ctx.fillRect(j * cellSize, i * cellSize, cellSize, cellSize);
           }
         }
@@ -400,7 +539,7 @@ function App() {
     };
     draw();
     return () => cancelAnimationFrame(animationFrameId);
-  }, [brushSize, mousePos, showGridLines]);
+  }, [brushSize, mousePos, showGridLines, showTrace, showHeatmap, stepCount, blurHeatmap, running, colorByAge]);
 
   // FPS tracking
   useEffect(() => {
@@ -770,213 +909,316 @@ function App() {
   }, [liveCells]);
   const percentToMax = maxPixels > 0 ? ((liveCells.size - maxPixels) / maxPixels) * 100 : 0;
 
+  // Add a ref to track previous generation's live cells
+  const prevLiveCellsRef = useRef(new Set());
+  // Update trace and heatmap on every generation
+  useEffect(() => {
+    setStepCount(c => c + 1);
+    if (showTrace || showHeatmap) {
+      const prevLiveCells = prevLiveCellsRef.current;
+      const heatMap = heatMapRef.current;
+      for (const key of liveCells) {
+        traceMapRef.current.add(key);
+        if (showHeatmap) {
+          const prev = heatMap.get(key) || 0;
+          heatMap.set(key, prev + 1);
+        }
+      }
+      // Cool-off: decrease heat for all cells if enabled
+      if (showHeatmap && coolOff) {
+        for (const [key, value] of heatMap.entries()) {
+          if (!liveCells.has(key)) {
+            heatMap.set(key, Math.max(0, value - 0.025));
+          }
+        }
+      }
+      // Heat spread: diffuse heat to neighbors if enabled
+      if (showHeatmap && heatSpread) {
+        const SPREAD_THRESHOLD = 0.5; // Only spread if heat > 0.5
+        const SPREAD_FRACTION = 0.12; // 12% of heat is spread
+        const tempMap = new Map();
+        for (const [key, value] of heatMap.entries()) {
+          if (value > SPREAD_THRESHOLD) {
+            const spread = value * SPREAD_FRACTION;
+            const remain = value - spread;
+            heatMap.set(key, remain);
+            // Spread to 8 neighbors
+            const { x, y } = parseKey(key);
+            const perNeighbor = spread / 8;
+            for (let dx = -1; dx <= 1; dx++) {
+              for (let dy = -1; dy <= 1; dy++) {
+                if (dx === 0 && dy === 0) continue;
+                const nKey = getKey(x + dx, y + dy);
+                tempMap.set(nKey, (tempMap.get(nKey) || 0) + perNeighbor);
+              }
+            }
+          }
+        }
+        // Apply tempMap to heatMap
+        for (const [key, add] of tempMap.entries()) {
+          heatMap.set(key, (heatMap.get(key) || 0) + add);
+        }
+      }
+      // Update prevLiveCellsRef for next generation
+      prevLiveCellsRef.current = new Set(liveCells);
+    }
+  }, [liveCells, showHeatmap, coolOff, heatSpread]);
+
   // UI: floating sidebar overlay pinned to top left
   return (
     <div style={{ height: '100vh', width: '100vw', position: 'relative', background: '#111' }}>
       {/* Floating Sidebar Overlay */}
-      <div style={{ position: 'fixed', top: 18, left: 18, zIndex: 100, width: showSidebar ? 260 : 40, background: '#232b3a', color: '#fff', borderRadius: 14, boxShadow: '0 4px 24px #0008', border: '1.5px solid #0ff6', transition: 'width 0.2s', overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: showSidebar ? 'flex-start' : 'center', padding: showSidebar ? '18px 12px 12px 12px' : '18px 0 0 0' }}>
-        <button onClick={() => setShowSidebar(s => !s)} style={{ marginBottom: 18, width: 32, height: 32, borderRadius: 8, border: 'none', background: '#333', color: '#fff', fontWeight: 700, fontSize: 18, cursor: 'pointer' }}>{showSidebar ? '⏴' : '⏵'}</button>
-        {showSidebar && <>
-          <button onClick={handleStart} disabled={running} className="sidebar-btn">Start</button>
-          <button onClick={handleStop} disabled={!running} className="sidebar-btn">Stop</button>
-          <button onClick={handleStep} disabled={running} className="sidebar-btn">Step</button>
-          <button onClick={handleClear} className="sidebar-btn">Clear</button>
-          <button onClick={handleExport} className="sidebar-btn">Export</button>
-          <button onClick={handleImportClick} className="sidebar-btn">Import</button>
-          <input
-            type="file"
-            accept=".rle,.lif,.lif.txt"
-            ref={fileInputRef}
-            style={{ display: 'none' }}
-            onChange={handleFileChange}
-          />
-          <label style={{ margin: '8px 0 0 0', display: 'block' }}>
-            Speed:
-            <input
-              type="range"
-              min={MIN_SPEED}
-              max={MAX_SPEED}
-              step={1}
-              value={speed}
-              onChange={e => setSpeed(Number(e.target.value))}
-              style={{ verticalAlign: 'middle', width: 120 }}
-            />
-            {speed}ms
-          </label>
-          <label style={{ margin: '8px 0 0 0', display: 'block' }}>
-            Zoom:
-            <button onClick={() => setCellSize(s => Math.max(MIN_CELL_SIZE, s - 2))} disabled={cellSize <= MIN_CELL_SIZE} className="sidebar-btn" style={{ width: 36, padding: 0 }}>-</button>
-            <span style={{ margin: '0 8px' }}>{cellSize}px</span>
-            <button onClick={() => setCellSize(s => Math.min(MAX_CELL_SIZE, s + 2))} disabled={cellSize >= MAX_CELL_SIZE} className="sidebar-btn" style={{ width: 36, padding: 0 }}>+</button>
-          </label>
-          <label style={{ margin: '8px 0 0 0', display: 'block' }}>
-            Brush:
-            <input
-              type="range"
-              min={1}
-              max={30}
-              step={1}
-              value={brushSize}
-              onChange={e => setBrushSize(Number(e.target.value))}
-              style={{ verticalAlign: 'middle', width: 80 }}
-            />
-            {brushSize}px
-          </label>
-          <label style={{ margin: '8px 0 0 0', display: 'block' }}>
-            <input type="checkbox" checked={showGridLines} onChange={e => setShowGridLines(e.target.checked)} style={{ marginRight: 6 }} /> Show Grid Lines
-          </label>
-        </>}
+      <div style={{ position: 'fixed', top: 18, right: 18, zIndex: 200 }}>
+        <button
+          onClick={() => setHideUI(h => !h)}
+          style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: '#222', color: '#0ff', fontWeight: 700, fontSize: 18, cursor: 'pointer', boxShadow: '0 2px 8px #0008' }}
+          title={hideUI ? 'Show UI' : 'Hide UI'}
+        >
+          {hideUI ? '☰' : '✕'}
+        </button>
       </div>
-      {/* Main grid area */}
-      <div style={{ height: '100vh', width: '100vw', marginLeft: showSidebar ? 260 : 40, transition: 'margin-left 0.2s', background: '#000' }}>
-        <MemoGameCanvas
-          canvasRef={canvasRef}
-          VIEW_COLS={VIEW_COLS}
-          VIEW_ROWS={VIEW_ROWS}
-          cellSize={cellSize}
-          handleCanvasMouseDown={handleCanvasMouseDown}
-          handleGridMouseMove={handleGridMouseMove}
-          handleCanvasMouseUp={handleCanvasMouseUp}
-          handleGridMouseLeave={handleGridMouseLeave}
-          handleContextMenu={handleContextMenu}
-        />
-        {/* Video-style speed controller */}
-        <div className="video-controller" style={{
-          position: 'fixed',
-          left: '50%',
-          bottom: 32,
-          transform: 'translateX(-50%)',
-          background: 'rgba(30,34,40,0.95)',
-          borderRadius: 16,
-          boxShadow: '0 2px 16px #0008',
-          padding: '10px 24px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 24,
-          zIndex: 200,
-          minWidth: 180,
-          height: 64,
-        }}>
-          <button
-            onClick={() => setSpeed(s => Math.max(MIN_SPEED, s - 10))}
-            style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'none', color: '#fff', fontSize: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            title="Faster (subtract 10ms)"
-            disabled={speed <= MIN_SPEED}
-          >
-            &#x2039;
-          </button>
-          <button
-            onClick={() => setRunning(r => !r)}
-            style={{ width: 48, height: 48, borderRadius: '50%', border: 'none', background: 'none', color: '#fff', fontSize: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            title={running ? 'Pause (Space)' : 'Play (Space)'}
-          >
-            {running ? '❚❚' : '▶'}
-          </button>
-          <button
-            onClick={() => setSpeed(s => Math.min(MAX_SPEED, s + 10))}
-            style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'none', color: '#fff', fontSize: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            title="Slower (add 10ms)"
-            disabled={speed >= MAX_SPEED}
-          >
-            &#x203A;
-          </button>
-        </div>
-        {/* Minimap overlay */}
-        <canvas
-          ref={minimapRef}
-          width={280}
-          height={280}
-          className="minimap"
-          style={{
-            position: 'fixed',
-            right: 24,
-            top: 24,
-            width: 280,
-            height: 280,
-            background: 'transparent',
-            border: '2px solid #0ff6',
-            borderRadius: 12,
-            zIndex: 120
-          }}
-        />
-        {/* Game speed and performance stat under minimap */}
-        <div style={{
-          position: 'fixed',
-          right: 24,
-          top: 314,
-          color: '#fff',
-          fontSize: 16,
-          fontWeight: 500,
-          background: 'rgba(30,34,40,0.95)',
-          borderRadius: 8,
-          padding: '4px 16px',
-          zIndex: 121,
-          textAlign: 'center',
-          minWidth: 120
-        }}>
-          Game Speed: {speed}ms<br/>
-          <span style={{ color: fps < 10 ? '#ff4444' : fps < 28 ? '#ffe066' : fps >= 40 ? '#00ff66' : '#fff' }}>Performance: {fps} FPS</span>
-          <div style={{ color: '#0ff', fontSize: 15, marginTop: 6 }}>Max Pixels: {maxPixels}</div>
-          <div style={{ fontSize: 14, marginTop: 2 }}>
-            Change to Max: <span style={{ color: percentToMax < 0 ? '#ff4444' : percentToMax > 0 ? '#00ff66' : '#fff' }}>{percentToMax > 0 ? '+' : ''}{percentToMax.toFixed(1)}%</span>
+      {!hideUI && (
+        <>
+          {/* Floating Sidebar Overlay */}
+          <div style={{ position: 'fixed', top: 18, left: 18, zIndex: 100, width: showSidebar ? 260 : 40, background: '#232b3a', color: '#fff', borderRadius: 14, boxShadow: '0 4px 24px #0008', border: '1.5px solid #0ff6', transition: 'width 0.2s', overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: showSidebar ? 'flex-start' : 'center', padding: showSidebar ? '18px 12px 12px 12px' : '18px 0 0 0' }}>
+            <button onClick={() => setShowSidebar(s => !s)} style={{ marginBottom: 18, width: 32, height: 32, borderRadius: 8, border: 'none', background: '#333', color: '#fff', fontWeight: 700, fontSize: 18, cursor: 'pointer' }}>{showSidebar ? '⏴' : '⏵'}</button>
+            {showSidebar && <>
+              <button onClick={handleStart} disabled={running} className="sidebar-btn">Start</button>
+              <button onClick={handleStop} disabled={!running} className="sidebar-btn">Stop</button>
+              <button onClick={handleStep} disabled={running} className="sidebar-btn">Step</button>
+              <button onClick={handleClear} className="sidebar-btn">Clear</button>
+              <button onClick={handleExport} className="sidebar-btn">Export</button>
+              <button onClick={handleImportClick} className="sidebar-btn">Import</button>
+              <input
+                type="file"
+                accept=".rle,.lif,.lif.txt"
+                ref={fileInputRef}
+                style={{ display: 'none' }}
+                onChange={handleFileChange}
+              />
+              <label style={{ margin: '8px 0 0 0', display: 'block' }}>
+                Speed:
+                <input
+                  type="range"
+                  min={MIN_SPEED}
+                  max={MAX_SPEED}
+                  step={1}
+                  value={speed}
+                  onChange={e => setSpeed(Number(e.target.value))}
+                  style={{ verticalAlign: 'middle', width: 120 }}
+                />
+                {speed}ms
+              </label>
+              <label style={{ margin: '8px 0 0 0', display: 'block' }}>
+                Zoom:
+                <button onClick={() => setCellSize(s => Math.max(MIN_CELL_SIZE, s - 2))} disabled={cellSize <= MIN_CELL_SIZE} className="sidebar-btn" style={{ width: 36, padding: 0 }}>-</button>
+                <span style={{ margin: '0 8px' }}>{cellSize}px</span>
+                <button onClick={() => setCellSize(s => Math.min(MAX_CELL_SIZE, s + 2))} disabled={cellSize >= MAX_CELL_SIZE} className="sidebar-btn" style={{ width: 36, padding: 0 }}>+</button>
+              </label>
+              <label style={{ margin: '8px 0 0 0', display: 'block' }}>
+                Brush:
+                <input
+                  type="range"
+                  min={1}
+                  max={30}
+                  step={1}
+                  value={brushSize}
+                  onChange={e => setBrushSize(Number(e.target.value))}
+                  style={{ verticalAlign: 'middle', width: 80 }}
+                />
+                {brushSize}px
+              </label>
+              <label style={{ margin: '8px 0 0 0', display: 'block' }}>
+                <input type="checkbox" checked={showGridLines} onChange={e => setShowGridLines(e.target.checked)} style={{ marginRight: 6 }} /> Show Grid Lines
+              </label>
+              <label style={{ margin: '8px 0 0 0', display: 'block' }}>
+                <input type="checkbox" checked={showTrace} onChange={e => setShowTrace(e.target.checked)} style={{ marginRight: 6 }} /> Show Trace
+              </label>
+              <label style={{ margin: '8px 0 0 0', display: 'block' }}>
+                <input type="checkbox" checked={showHeatmap} onChange={e => setShowHeatmap(e.target.checked)} style={{ marginRight: 6 }} /> Show Heatmap
+              </label>
+              <label style={{ margin: '8px 0 0 0', display: 'block' }}>
+                <input type="checkbox" checked={blurHeatmap} onChange={e => setBlurHeatmap(e.target.checked)} style={{ marginRight: 6 }} /> Blur Heatmap (Paused Only)
+              </label>
+              <label style={{ margin: '8px 0 0 0', display: 'block' }}>
+                <input type="checkbox" checked={coolOff} onChange={e => setCoolOff(e.target.checked)} style={{ marginRight: 6 }} /> Heat Cool-Off
+              </label>
+              <label style={{ margin: '8px 0 0 0', display: 'block' }}>
+                <input type="checkbox" checked={heatSpread} onChange={e => setHeatSpread(e.target.checked)} style={{ marginRight: 6 }} /> Heat Spread
+              </label>
+              <label style={{ margin: '8px 0 0 0', display: 'block' }}>
+                <input type="checkbox" checked={colorByAge} onChange={e => setColorByAge(e.target.checked)} style={{ marginRight: 6 }} /> Color by Age
+              </label>
+            </>}
           </div>
-          <div style={{ fontSize: 14, marginTop: 2 }}>
-            Δ: <span style={{ color: pixelDelta < 0 ? '#ff4444' : pixelDelta > 0 ? '#00ff66' : '#aaa' }}>{pixelDelta > 0 ? '+' : ''}{pixelDelta}</span>
+          {/* Main grid area overlays */}
+          <div style={{ height: '100vh', width: '100vw', marginLeft: showSidebar ? 260 : 40, transition: 'margin-left 0.2s', background: '#000' }}>
+            <MemoGameCanvas
+              canvasRef={canvasRef}
+              VIEW_COLS={VIEW_COLS}
+              VIEW_ROWS={VIEW_ROWS}
+              cellSize={cellSize}
+              handleCanvasMouseDown={handleCanvasMouseDown}
+              handleGridMouseMove={handleGridMouseMove}
+              handleCanvasMouseUp={handleCanvasMouseUp}
+              handleGridMouseLeave={handleGridMouseLeave}
+              handleContextMenu={handleContextMenu}
+            />
+            {/* Video-style speed controller */}
+            <div className="video-controller" style={{
+              position: 'fixed',
+              left: '50%',
+              bottom: 32,
+              transform: 'translateX(-50%)',
+              background: 'rgba(30,34,40,0.95)',
+              borderRadius: 16,
+              boxShadow: '0 2px 16px #0008',
+              padding: '10px 24px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 24,
+              zIndex: 200,
+              minWidth: 180,
+              height: 64,
+            }}>
+              <button
+                onClick={() => setSpeed(s => Math.max(MIN_SPEED, s - 10))}
+                style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'none', color: '#fff', fontSize: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                title="Faster (subtract 10ms)"
+                disabled={speed <= MIN_SPEED}
+              >
+                &#x2039;
+              </button>
+              <button
+                onClick={() => setRunning(r => !r)}
+                style={{ width: 48, height: 48, borderRadius: '50%', border: 'none', background: 'none', color: '#fff', fontSize: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                title={running ? 'Pause (Space)' : 'Play (Space)'}
+              >
+                {running ? '❚❚' : '▶'}
+              </button>
+              <button
+                onClick={() => setSpeed(s => Math.min(MAX_SPEED, s + 10))}
+                style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'none', color: '#fff', fontSize: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                title="Slower (add 10ms)"
+                disabled={speed >= MAX_SPEED}
+              >
+                &#x203A;
+              </button>
+            </div>
+            {/* Minimap overlay */}
+            <canvas
+              ref={minimapRef}
+              width={280}
+              height={280}
+              className="minimap"
+              style={{
+                position: 'fixed',
+                right: 24,
+                top: 24,
+                width: 280,
+                height: 280,
+                background: 'transparent',
+                border: '2px solid #0ff6',
+                borderRadius: 12,
+                zIndex: 120
+              }}
+            />
+            {/* Game speed and performance stat under minimap */}
+            <div style={{
+              position: 'fixed',
+              right: 24,
+              top: 314,
+              color: '#fff',
+              fontSize: 16,
+              fontWeight: 500,
+              background: 'rgba(30,34,40,0.95)',
+              borderRadius: 8,
+              padding: '4px 16px',
+              zIndex: 121,
+              textAlign: 'center',
+              minWidth: 120
+            }}>
+              <div style={{ fontSize: 15, color: '#0ff', marginBottom: 2 }}>Step: {stepCount}</div>
+              Game Speed: {speed}ms<br/>
+              <span style={{ color: fps < 10 ? '#ff4444' : fps < 28 ? '#ffe066' : fps >= 40 ? '#00ff66' : '#fff' }}>Performance: {fps} FPS</span>
+              <div style={{ color: '#0ff', fontSize: 15, marginTop: 6 }}>Max Pixels: {maxPixels}</div>
+              <div style={{ fontSize: 14, marginTop: 2 }}>
+                Change to Max: <span style={{ color: percentToMax < 0 ? '#ff4444' : percentToMax > 0 ? '#00ff66' : '#fff' }}>{percentToMax > 0 ? '+' : ''}{percentToMax.toFixed(1)}%</span>
+              </div>
+              <div style={{ fontSize: 14, marginTop: 2 }}>
+                Δ: <span style={{ color: pixelDelta < 0 ? '#ff4444' : pixelDelta > 0 ? '#00ff66' : '#aaa' }}>{pixelDelta > 0 ? '+' : ''}{pixelDelta}</span>
+              </div>
+            </div>
+            {/* Pixel count and graph in bottom right */}
+            <div style={{
+              position: 'fixed',
+              right: 18,
+              bottom: 18,
+              zIndex: 150,
+              background: 'rgba(30,34,40,0.95)',
+              borderRadius: 12,
+              boxShadow: '0 2px 12px #0008',
+              padding: '10px 18px 12px 18px',
+              minWidth: 120,
+              textAlign: 'center',
+            }}>
+              <div style={{ color: '#0ff', fontWeight: 600, fontSize: 18, marginBottom: 4 }}>
+                Pixels: {liveCells.size}
+              </div>
+              <canvas
+                width={120}
+                height={48}
+                style={{ width: 120, height: 48, background: '#000', borderRadius: 8 }}
+                ref={el => {
+                  if (!el) return;
+                  const ctx = el.getContext('2d');
+                  ctx.clearRect(0, 0, 120, 48);
+                  // Black background
+                  ctx.fillStyle = '#000';
+                  ctx.fillRect(0, 0, 120, 48);
+                  ctx.strokeStyle = '#0ff';
+                  ctx.lineWidth = 2.5;
+                  ctx.beginPath();
+                  const hist = pixelHistory;
+                  if (hist.length > 0) {
+                    const max = Math.max(...hist, 1);
+                    const min = Math.min(...hist, 0);
+                    // Add margin (5% top/bottom)
+                    const margin = 0.05 * (max - min || 1);
+                    const graphMax = max + margin;
+                    const graphMin = min - margin;
+                    for (let i = 0; i < hist.length; i++) {
+                      const x = (i / (hist.length - 1)) * 119;
+                      // Avoid division by zero for flat lines
+                      const y = 46 - ((hist[i] - graphMin) / (graphMax - graphMin || 1)) * 44;
+                      if (i === 0) ctx.moveTo(x, y);
+                      else ctx.lineTo(x, y);
+                    }
+                    ctx.stroke();
+                  }
+                }}
+              />
+              <div style={{ color: '#888', fontSize: 13, marginTop: 2 }}>Population (last 100 steps)</div>
+            </div>
           </div>
-        </div>
-        {/* Pixel count and graph in bottom right */}
-        <div style={{
-          position: 'fixed',
-          right: 18,
-          bottom: 18,
-          zIndex: 150,
-          background: 'rgba(30,34,40,0.95)',
-          borderRadius: 12,
-          boxShadow: '0 2px 12px #0008',
-          padding: '10px 18px 12px 18px',
-          minWidth: 120,
-          textAlign: 'center',
-        }}>
-          <div style={{ color: '#0ff', fontWeight: 600, fontSize: 18, marginBottom: 4 }}>
-            Pixels: {liveCells.size}
-          </div>
-          <canvas
-            width={120}
-            height={48}
-            style={{ width: 120, height: 48, background: '#000', borderRadius: 8 }}
-            ref={el => {
-              if (!el) return;
-              const ctx = el.getContext('2d');
-              ctx.clearRect(0, 0, 120, 48);
-              // Black background
-              ctx.fillStyle = '#000';
-              ctx.fillRect(0, 0, 120, 48);
-              ctx.strokeStyle = '#0ff';
-              ctx.lineWidth = 2.5;
-              ctx.beginPath();
-              const hist = pixelHistory;
-              if (hist.length > 0) {
-                const max = Math.max(...hist, 1);
-                const min = Math.min(...hist, 0);
-                // Add margin (5% top/bottom)
-                const margin = 0.05 * (max - min || 1);
-                const graphMax = max + margin;
-                const graphMin = min - margin;
-                for (let i = 0; i < hist.length; i++) {
-                  const x = (i / (hist.length - 1)) * 119;
-                  // Avoid division by zero for flat lines
-                  const y = 46 - ((hist[i] - graphMin) / (graphMax - graphMin || 1)) * 44;
-                  if (i === 0) ctx.moveTo(x, y);
-                  else ctx.lineTo(x, y);
-                }
-                ctx.stroke();
-              }
-            }}
+        </>
+      )}
+      {hideUI && (
+        <div style={{ height: '100vh', width: '100vw', background: '#000' }}>
+          <MemoGameCanvas
+            canvasRef={canvasRef}
+            VIEW_COLS={VIEW_COLS}
+            VIEW_ROWS={VIEW_ROWS}
+            cellSize={cellSize}
+            handleCanvasMouseDown={handleCanvasMouseDown}
+            handleGridMouseMove={handleGridMouseMove}
+            handleCanvasMouseUp={handleCanvasMouseUp}
+            handleGridMouseLeave={handleGridMouseLeave}
+            handleContextMenu={handleContextMenu}
           />
-          <div style={{ color: '#888', fontSize: 13, marginTop: 2 }}>Population (last 100 steps)</div>
         </div>
-      </div>
+      )}
       {/* Mobile hint */}
       {showMobileHint && (
         <div className="mobile-hint">
