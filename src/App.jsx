@@ -189,19 +189,27 @@ function App() {
   // Paint a circular brush of the selected size (in pixels)
   const paintBrush = (centerX, centerY, mode) => {
     const cellSize = cellSizeRef.current;
-    const radiusPx = brushSize / 2;
-    const centerCellX = Math.floor(centerX);
-    const centerCellY = Math.floor(centerY);
-    const cellsRadius = Math.ceil(radiusPx / cellSize);
-    for (let dx = -cellsRadius; dx <= cellsRadius; dx++) {
-      for (let dy = -cellsRadius; dy <= cellsRadius; dy++) {
+    const radiusPx = Math.max(brushSize / 2, 0.5); // always at least 0.5px
+    // Compute the bounding box in cell space
+    const minCellX = Math.floor(centerX - radiusPx / cellSize);
+    const maxCellX = Math.ceil(centerX + radiusPx / cellSize);
+    const minCellY = Math.floor(centerY - radiusPx / cellSize);
+    const maxCellY = Math.ceil(centerY + radiusPx / cellSize);
+    let painted = false;
+    for (let x = minCellX; x <= maxCellX; x++) {
+      for (let y = minCellY; y <= maxCellY; y++) {
         // Center of this cell in pixel space relative to brush center
-        const px = (centerCellX + dx - centerX) * cellSize;
-        const py = (centerCellY + dy - centerY) * cellSize;
+        const px = (x + 0.5 - centerX) * cellSize;
+        const py = (y + 0.5 - centerY) * cellSize;
         if (Math.sqrt(px * px + py * py) <= radiusPx) {
-          paintCell(centerCellX + dx, centerCellY + dy, mode);
+          paintCell(x, y, mode);
+          painted = true;
         }
       }
+    }
+    // Always paint at least the center cell if nothing else
+    if (!painted) {
+      paintCell(Math.round(centerX), Math.round(centerY), mode);
     }
   };
   const paintCell = (x, y, mode) => {
@@ -618,15 +626,15 @@ function App() {
       {/* Minimap overlay */}
       <canvas
         ref={minimapRef}
-        width={160}
-        height={160}
+        width={280}
+        height={280}
         style={{
           position: 'fixed',
           right: 24,
-          bottom: 24,
-          width: 160,
-          height: 160,
-          background: '#181c',
+          top: 24,
+          width: 280,
+          height: 280,
+          background: 'transparent',
           border: '2px solid #0ff6',
           borderRadius: 12,
           zIndex: 120
